@@ -174,10 +174,13 @@ class I2C(pyftdi.gpio.GpioController):
                 raise I2CNACK("Address Read NACK", addr)
             return [self.read_data(ack=i < length - 1) for i in range(length)]
 
+    def poll(self, addr):
+        with self.xfer():
+            return self.write_data(addr << 1)
+
     def scan(self):
         for addr in range(1 << 7):
-            with self.xfer():
-                if self.write_data(addr << 1):
+            if self.poll(addr):
                     yield addr
 
 
@@ -316,6 +319,32 @@ class Si5324:
         self.wait_lock()
 
 
+class EEPROM:
+    def __init__(self, bus, addr=0x50):
+        self.bus = bus
+        self.addr = addr
+
+    def dump(self):
+        return self.bus.read_many(self.addr, 0, 1 << 8)
+
+    def poll(self, timeout=1.):
+        t = time.monotonic()
+        while not self.bus.poll(self.addr):
+            if time.monotonic() - t > timeout:
+                raise ValueError("poll timeout")
+        logging.info("polling took %g s", time.monotonic() - t)
+
+    def eui48(self):
+        return self.bus.read_many(self.addr, 0xfa, 6)
+
+    def eui64(self):
+        return self.bus.read_many(self.addr, 0xf8, 8)
+
+    def fmt_eui48(self):
+        return "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}-{:02x}".format(
+                *self.eui48())
+
+
 class SFF8472:
     def __init__(self, bus):
         self.bus = bus
@@ -354,7 +383,7 @@ if __name__ == "__main__":
                     print(port, hex(addr))
             print((bus._time - t)/2/(time.monotonic() - t0), "Hz ~ I2C clock")
 
-        sel = SI5324 | SFP[0]
+        sel = SI5324 | SFP[0] | EEM[0]
         sw0.set(sel & 0xff)
         assert sw0.get() == sel & 0xff
         sw1.set(sel >> 8)
@@ -377,3 +406,6 @@ if __name__ == "__main__":
         # sfp0 = SFF8472(bus)
         # print(sfp0.ident())
         #print(bus.read_many(0x50, 0, 256))
+
+        ee = EEPROM(bus)
+        print(ee.fmt_eui48())
