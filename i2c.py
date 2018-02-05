@@ -375,45 +375,70 @@ class SFF8472:
         return self.bus.read_stream(self.addr, 256)
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-
+class Kasli10(I2C):
     EEM = [1 << i for i in (7, 5, 4, 3, 2, 1, 0, 6, 12, 13, 15, 14)]
     SFP = [1 << i for i in (8, 9, 10)]
     SI5324 = 1 << 11
+    skip = []
 
-    bus = I2C()
-    bus.configure("ftdi://ftdi:4232h:Kasli-v1.0-2/3")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.sw0 = PCA9548(self, 0x70)
+        self.sw1 = PCA9548(self, 0x71)
+
+    def select(self, port):
+        assert port not in self.skip
+        self.enable(1 << port)
+
+    def enable(self, ports):
+        self.sw0.set(ports & 0xff)
+        self.sw1.set(ports >> 8)
+
+    def test_speed(self):
+        t = self._time
+        t0 = time.monotonic()
+        for port in range(16):
+            if port in ():  # SDA shorted to ground
+                continue
+            self.select(port)
+            assert self.sw0.get() == (1 << port) & 0xff
+            assert self.sw1.get() == (1 << port) >> 8
+            for addr in self.scan():
+                pass
+        clock = (self._time - t)/2/(time.monotonic() - t0)
+        logger.info("I2C speed ~%s Hz", clock)
+
+    def scan_eui48(self):
+        self.sw0.get()
+        self.sw1.get()
+
+        ee = EEPROM(self)
+
+        for port in range(16):
+            logger.info("Scanning port %i", port)
+            if port in self.skip:
+                continue
+            self.select(port)
+            for addr in self.scan():
+                if addr not in (self.sw0.addr, self.sw1.addr):
+                    logger.info("Port %i: found %#02x", port, addr)
+                if addr == ee.addr and (1 << port) in self.EEM:
+                    logger.warning("EEM %i: %s", self.EEM.index(1 << port), ee.fmt_eui48())
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+
+    bus = Kasli10()
+    bus.configure("ftdi://ftdi:4232h:Kasli-v1.0-8/3")
+    # bus.skip.append(1)  # EEM port 1 SDA shorted on Kasli-v1.0-2
 
     with bus:
-        sw0 = PCA9548(bus, 0x70)
-        sw1 = PCA9548(bus, 0x71)
-        sw0.get()
-        sw1.get()
+        # bus.test_speed()
+        bus.scan_eui48()
 
-        ee = EEPROM(bus)
-
-        if False:
-            t = bus._time
-            t0 = time.monotonic()
-            for port in range(16):
-                print(port)
-                if port in ():  # SDA shorted to ground
-                    continue
-                sw0.set((1 << port) & 0xff)
-                sw1.set((1 << port) >> 8)
-                for addr in bus.scan():
-                    if addr not in (sw0.addr, sw1.addr):
-                        print(port, hex(addr))
-                    if addr == ee.addr and (1 << port) in EEM:
-                        print("EEM", EEM.index(1 << port), ee.fmt_eui48())
-            print((bus._time - t)/2/(time.monotonic() - t0), "Hz ~ I2C clock")
-
-        sel = SI5324 | SFP[0] # | EEM[0]
-        sw0.set(sel & 0xff)
-        assert sw0.get() == sel & 0xff
-        sw1.set(sel >> 8)
-        assert sw1.get() == sel >> 8
+        bus.enable(bus.SI5324 | bus.SFP[0])
 
         si = Si5324(bus)
         s = Si5324.FrequencySettings()
@@ -436,7 +461,6 @@ if __name__ == "__main__":
             s.n2_ls = 300  # 125MHz CKOUT
             s.bwsel = 10
         si.setup(s)
-
         print(si.has_xtal(), si.has_clkin2(), si.locked())
 
         sfp0 = SFF8472(bus)
