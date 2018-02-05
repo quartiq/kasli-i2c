@@ -343,7 +343,7 @@ class EEPROM:
         self.addr = addr
 
     def dump(self):
-        return self.bus.read_many(self.addr, 0, 1 << 8)
+        return bytes(self.bus.read_many(self.addr, 0, 1 << 8))
 
     def poll(self, timeout=1.):
         t = time.monotonic()
@@ -372,7 +372,7 @@ class SFF8472:
         return self.bus.read_stream(self.addr, 1)[0]
 
     def dump(self):
-        return self.bus.read_stream(self.addr, 256)
+        return bytes(self.bus.read_stream(self.addr, 256))
 
 
 class Kasli10(I2C):
@@ -388,10 +388,10 @@ class Kasli10(I2C):
         self.sw1 = PCA9548(self, 0x71)
 
     def select(self, port):
-        assert port not in self.skip
         self.enable(1 << port)
 
     def enable(self, ports):
+        assert not any(ports & (1 << i) for i in self.skip)
         self.sw0.set(ports & 0xff)
         self.sw1.set(ports >> 8)
 
@@ -399,7 +399,7 @@ class Kasli10(I2C):
         t = self._time
         t0 = time.monotonic()
         for port in range(16):
-            if port in ():  # SDA shorted to ground
+            if port in self.skip:
                 continue
             self.select(port)
             assert self.sw0.get() == (1 << port) & 0xff
@@ -428,44 +428,67 @@ class Kasli10(I2C):
 
 
 if __name__ == "__main__":
+    import argparse
+
     logging.basicConfig(level=logging.INFO)
 
+    p = argparse.ArgumentParser()
+    p.add_argument("-i", "--index", default=0, type=int)
+    p.add_argument("-s", "--serial", default=None)
+    p.add_argument("-k", "--skip", action="append", default=[], type=int)
+    p.add_argument("-e", "--eem", default=None, type=int)
+    p.add_argument("action", nargs="*")
+    args = p.parse_args()
+
     bus = Kasli10()
-    bus.configure("ftdi://ftdi:4232h:Kasli-v1.0-8/3")
-    # bus.skip.append(1)  # EEM port 1 SDA shorted on Kasli-v1.0-2
+    idx = args.serial if args.serial else args.index
+    bus.configure("ftdi://ftdi:4232h:{}/3".format(idx))
+    bus.skip = args.skip
+    # EEM1 (port 5) SDA shorted on Kasli-v1.0-2
+
+    if not args.action:
+        args.action.extend(["scan", "si5324"])
 
     with bus:
-        # bus.test_speed()
-        bus.scan_eui48()
-
-        bus.enable(bus.SI5324 | bus.SFP[0])
-
-        si = Si5324(bus)
-        s = Si5324.FrequencySettings()
-        if True:
-            s.n31 = 9370  # 100 MHz CKIN1
-            s.n32 = 7139  # 114.285 MHz CKIN2 XTAL
-            s.n1_hs = 9
-            s.nc1_ls = 4
-            s.nc2_ls = 4
-            s.n2_hs = 10
-            s.n2_ls = 33732 # 150MHz CKOUT
-            s.bwsel = 3
-        else:
-            s.n31 = 75  # 125 MHz CKIN1
-            s.n32 = 6   # 10 MHz CKIN2
-            s.n1_hs = 10
-            s.nc1_ls = 4
-            s.nc2_ls = 4
-            s.n2_hs = 10
-            s.n2_ls = 300  # 125MHz CKOUT
-            s.bwsel = 10
-        si.setup(s)
-        print(si.has_xtal(), si.has_clkin2(), si.locked())
-
-        sfp0 = SFF8472(bus)
-        # print(sfp0.ident())
-        print(sfp0.dump())
-
-        #ee = EEPROM(bus)
-        #print(ee.fmt_eui48())
+        for action in args.action:
+            if action == "speed":
+                bus.test_speed()
+            elif action == "scan":
+                bus.scan_eui48()
+            elif action == "si5324":
+                bus.enable(bus.SI5324)
+                si = Si5324(bus)
+                s = Si5324.FrequencySettings()
+                if True:
+                    s.n31 = 9370  # 100 MHz CKIN1
+                    s.n32 = 7139  # 114.285 MHz CKIN2 XTAL
+                    s.n1_hs = 9
+                    s.nc1_ls = 4
+                    s.nc2_ls = 4
+                    s.n2_hs = 10
+                    s.n2_ls = 33732 # 150MHz CKOUT
+                    s.bwsel = 3
+                else:
+                    s.n31 = 75  # 125 MHz CKIN1
+                    s.n32 = 6   # 10 MHz CKIN2
+                    s.n1_hs = 10
+                    s.nc1_ls = 4
+                    s.nc2_ls = 4
+                    s.n2_hs = 10
+                    s.n2_ls = 300  # 125MHz CKOUT
+                    s.bwsel = 10
+                si.setup(s)
+                logger.warning("flags %s %s %s", si.has_xtal(),
+                        si.has_clkin2(), si.locked())
+            elif action == "sfp":
+                bus.enable(bus.SFP[0])
+                sfp0 = SFF8472(bus)
+                # logger.warning(sfp0.ident())
+                logger.warning(sfp0.dump())
+            elif action == "ee":
+                bus.enable(bus.EEM[args.eem])
+                ee = EEPROM(bus)
+                logger.warning(ee.fmt_eui48())
+                logger.warning(ee.dump())
+            else:
+                raise ValueError("unknown action", action)
