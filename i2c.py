@@ -174,6 +174,12 @@ class I2C(pyftdi.gpio.GpioController):
                 raise I2CNACK("Address Read NACK", addr)
             return [self.read_data(ack=i < length - 1) for i in range(length)]
 
+    def read_stream(self, addr, length=1):
+        with self.xfer():
+            if not self.write_data((addr << 1) | 1):
+                raise I2CNACK("Address Read NACK", addr)
+            return [self.read_data(ack=i < length - 1) for i in range(length)]
+
     def poll(self, addr):
         with self.xfer():
             return self.write_data(addr << 1)
@@ -258,6 +264,9 @@ class Si5324:
     def has_xtal(self):
         return self.read(129) & 0x01 == 0  # LOSX_INT=0
 
+    def has_clkin1(self):
+        return self.read(129) & 0x02 == 0  # LOS1_INT=0
+
     def has_clkin2(self):
         return self.read(129) & 0x04 == 0  # LOS2_INT=0
 
@@ -288,11 +297,14 @@ class Si5324:
         time.sleep(.01)
 
         self.write(0,   self.read(0) | 0x40)  # FREE_RUN=1
+        # self.write(0,   self.read(0) & ~0x40)  # FREE_RUN=0
         self.write(2,   (self.read(2) & 0x0f) | (s.bwsel << 4))
         self.write(21,  self.read(21) & 0xfe)  # CKSEL_PIN=0
+        self.write(22,  self.read(22) & 0xfd)  # LOL_POL=0
+        self.write(19,  self.read(19) & 0xf7)  # LOCKT=0
         self.write(3,   (self.read(3) & 0x3f) | (0b01 << 6) | 0x10)  # CKSEL_REG=b01 SQ_ICAL=1
         self.write(4,   (self.read(4) & 0x3f) | (0b00 << 6))  # AUTOSEL_REG=b00
-        self.write(6,   (self.read(6) & 0xc0) | 0b101101)  # SFOUT2_REG=b111 SFOUT1_REG=b111
+        self.write(6,   (self.read(6) & 0xc0) | 0b101101)  # SFOUT2_REG=b101 SFOUT1_REG=b101
         self.write(25,  (s.n1_hs  << 5 ))
         self.write(31,  (s.nc1_ls >> 16))
         self.write(32,  (s.nc1_ls >> 8 ))
@@ -317,6 +329,12 @@ class Si5324:
         if not self.has_clkin2():
             raise ValueError("Si5324 misses CLKIN2 signal")
         self.wait_lock()
+
+    def dump(self):
+        for i in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19, 20, 21, 22, 23, 24,
+                25, 31, 32, 33, 34, 35, 36, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+                55, 131, 132, 137, 138, 139, 142, 143, 136):
+            print("{: 4d}, {:02X}h".format(i, self.read(i)))
 
 
 class EEPROM:
@@ -351,8 +369,10 @@ class SFF8472:
         self.addr = 0x50
 
     def ident(self):
-        return self.bus.read_many(self.addr, 0, 1)[0]
+        return self.bus.read_stream(self.addr, 1)[0]
 
+    def dump(self):
+        return self.bus.read_stream(self.addr, 256)
 
 
 if __name__ == "__main__":
@@ -371,19 +391,25 @@ if __name__ == "__main__":
         sw0.get()
         sw1.get()
 
+        ee = EEPROM(bus)
+
         if False:
             t = bus._time
             t0 = time.monotonic()
             for port in range(16):
-                if port in (5,):
+                print(port)
+                if port in ():  # SDA shorted to ground
                     continue
                 sw0.set((1 << port) & 0xff)
                 sw1.set((1 << port) >> 8)
                 for addr in bus.scan():
-                    print(port, hex(addr))
+                    if addr not in (sw0.addr, sw1.addr):
+                        print(port, hex(addr))
+                    if addr == ee.addr and (1 << port) in EEM:
+                        print("EEM", EEM.index(1 << port), ee.fmt_eui48())
             print((bus._time - t)/2/(time.monotonic() - t0), "Hz ~ I2C clock")
 
-        sel = SI5324 | SFP[0] | EEM[0]
+        sel = SI5324 | SFP[0] # | EEM[0]
         sw0.set(sel & 0xff)
         assert sw0.get() == sel & 0xff
         sw1.set(sel >> 8)
@@ -391,21 +417,31 @@ if __name__ == "__main__":
 
         si = Si5324(bus)
         s = Si5324.FrequencySettings()
-        s.n31 = 9370  # 100 MHz CKIN1
-        s.n32 = 7139  # 114.285 MHz CKIN2 XTAL
-        s.n1_hs = 9
-        s.nc1_ls = 4
-        s.nc2_ls = 4
-        s.n2_hs = 10
-        s.n2_ls = 33732 # 150MHz CKOUT
-        s.bwsel = 3
+        if True:
+            s.n31 = 9370  # 100 MHz CKIN1
+            s.n32 = 7139  # 114.285 MHz CKIN2 XTAL
+            s.n1_hs = 9
+            s.nc1_ls = 4
+            s.nc2_ls = 4
+            s.n2_hs = 10
+            s.n2_ls = 33732 # 150MHz CKOUT
+            s.bwsel = 3
+        else:
+            s.n31 = 75  # 125 MHz CKIN1
+            s.n32 = 6   # 10 MHz CKIN2
+            s.n1_hs = 10
+            s.nc1_ls = 4
+            s.nc2_ls = 4
+            s.n2_hs = 10
+            s.n2_ls = 300  # 125MHz CKOUT
+            s.bwsel = 10
         si.setup(s)
 
         print(si.has_xtal(), si.has_clkin2(), si.locked())
 
-        # sfp0 = SFF8472(bus)
+        sfp0 = SFF8472(bus)
         # print(sfp0.ident())
-        #print(bus.read_many(0x50, 0, 256))
+        print(sfp0.dump())
 
-        ee = EEPROM(bus)
-        print(ee.fmt_eui48())
+        #ee = EEPROM(bus)
+        #print(ee.fmt_eui48())
