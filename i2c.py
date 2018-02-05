@@ -383,7 +383,7 @@ if __name__ == "__main__":
     SI5324 = 1 << 11
 
     bus = I2C()
-    bus.configure("ftdi://ftdi:4232h/3")
+    bus.configure("ftdi://ftdi:4232h:Kasli-v1.0-2/3")
 
     with bus:
         sw0 = PCA9548(bus, 0x70)
