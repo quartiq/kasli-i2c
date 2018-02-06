@@ -380,6 +380,19 @@ class EEPROM:
                 *self.eui48())
 
 
+class PCF8574:
+    """Octal I/O extender, 100 µA pullups, strong rising pulse, open-drain"""
+    def __init__(self, bus, addr=0x70):
+        self.bus = bus
+        self.addr = addr
+
+    def write(self, data):
+        self.bus.write_single(self.addr, data)
+
+    def read(self):
+        return self.bus.read_single(self.addr)
+
+
 class SFF8472:
     def __init__(self, bus):
         self.bus = bus
@@ -551,5 +564,8 @@ if __name__ == "__main__":
                 ee = EEPROM(bus)
                 logger.warning(ee.fmt_eui48())
                 logger.warning(ee.dump())
+                io = PCF8574(bus, addr=0x3e)
+                # io.write(0xff)
+                # logger.warning(hex(io.read()))
             else:
                 raise ValueError("unknown action", action)
