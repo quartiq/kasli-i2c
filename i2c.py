@@ -405,9 +405,21 @@ class SFF8472:
         self.bus = bus
         self.addr = 0x50, 0x51
 
+    def select_page(self, page):
+        with self.bus.xfer():
+            for val in [0x00, 0x04, 0x02*page]:
+                if not self.bus.write_data(val):
+                    raise I2CNACK("NACK", val)
+
     def dump(self):
-        return (self.bus.read_stream(self.addr[0], 256),
-                self.bus.read_stream(self.addr[1], 256))
+        # self.select_page(0)
+        c = self.bus.read_stream(self.addr[0], 256)
+        # if c[92] & 0x04:
+        #     self.select_page(1)
+        d = self.bus.read_stream(self.addr[1], 256)
+        # if c[92] & 0x04:
+        #     self.select_page(0)
+        return c, d
 
     def print_dump(self):
         for i in self.dump():
@@ -559,11 +571,10 @@ if __name__ == "__main__":
                 logger.warning("flags %s %s %s", si.has_xtal(),
                         si.has_clkin2(), si.locked())
             elif action == "sfp":
-                bus.enable(bus.SFP[0])
+                bus.enable(bus.SFP[args.eem])
                 sfp0 = SFF8472(bus)
-                # logger.warning(sfp0.ident())
-                sfp0.watch()
                 sfp0.report()
+                sfp0.watch()
             elif action == "ee":
                 bus.enable(bus.EEM[args.eem])
                 ee = EEPROM(bus)

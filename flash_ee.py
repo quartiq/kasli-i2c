@@ -15,7 +15,7 @@ if __name__ == "__main__":
     ee_data = Sinara(
         name="DIO-BNC",
         id=Sinara.ids.index("DIO-BNC"),
-        major=1, minor=1, variant=0, port=0,
+        data_rev=0, major=1, minor=1, variant=0, port=0,
         vendor=Sinara.vendors.index("Technosystem"),
         serial=0)
 
@@ -25,11 +25,13 @@ if __name__ == "__main__":
         bus.reset()
         bus.enable(bus.EEM[eem])
         ee = EEPROM(bus)
-        d = ee.dump()
         try:
-            logger.warning("valid data %s", Sinara.unpack(d))
+            logger.warning("valid data %s", Sinara.unpack(ee.dump()))
         except:
-            logger.warning(ee.fmt_eui48())
             logger.warning("invalid data", exc_info=True)
-        ee.write(0, ee_data._replace(eui48=ee.eui48()).pack()[:128])
-        logger.warning(Sinara.unpack(ee.dump()))
+        data = ee_data._replace(eui48=ee.eui48())
+        ee.write(0, data.pack()[:128])
+        try:
+            logger.info("data readback valid %s", Sinara.unpack(ee.dump()))
+        except:
+            logger.error("data readback invalid", exc_info=True)
