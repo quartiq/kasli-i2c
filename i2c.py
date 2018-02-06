@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import logging
 import time
+import struct
 
 import pyftdi.gpio
 
@@ -369,36 +370,52 @@ class SFF8472:
         self.addr = 0x50, 0x51
 
     def dump(self):
+        #return (bytes(self.bus.read_many(self.addr[0], 0, 1 << 8)),
+        #        bytes(self.bus.read_many(self.addr[1], 0, 1 << 8)))
         return (bytes(self.bus.read_stream(self.addr[0], 256)),
                 bytes(self.bus.read_stream(self.addr[1], 256)))
 
+    def print_dump(self):
+        for i in self.dump():
+            logger.warning("        " + " %2i" * 16, *range(16))
+            logger.warning("        " + " %02x" * 16, *range(16))
+            for j in range(16):
+                logger.warning("%3i, %2x:" + " %2x" * 16, j*16, j*16,
+                        *i[j*16:(j + 1)*16])
+
     def watch(self, n=10):
-        b0 = self.dump()
-        logger.warning(b0)
+        self.print_dump()
+        b = self.dump()
         for i in range(n):
-            b = self.dump()
-            for j, (a0, a) in enumerate(zip(b0, b)):
-                if a0 == a:
-                    continue
-                logger.warning("run % 2i, idx %#02x: %#02x != %#02x",
-                        i, j, a0, a)
-                b0 = b
+            b, b0 = self.dump(), b
+            for j, (c0, c) in enumerate(zip(b0, b)):
+                for k, (a0, a) in enumerate(zip(c0, c)):
+                    if a0 == a:
+                        continue
+                    logger.warning("run % 2i, idx %i/%#02x(%3i): %#02x != %#02x",
+                            i, j, k, k, a0, a)
 
     def report(self):
         c, d = self.dump()
-        if d[92] & 0x04:
-            logger.info("Address change sequence required")
-        if d[92] & 0x08:
-            logger.info("Received power is average power")
-        else:
-            logger.info("Received power is OMA")
-        if d[92] & 0x10:
-            logger.info("Externally calibrated")
-        if d[92] & 0x20:
-            logger.info("Internally calibrated")
-            logger.info("Temperature %s C", struct.unpack(">h", d[96:98])/256)
-        if d[92] & 0x40:
+        #logger.info("Part: %s, Serial: %s", c[40:40+16], c[68:68+16])
+        #logger.info("Vendor: %s", c[20:35])
+        #logger.info("OUI: %s", c[37:40])
+        if c[92] & 0x40:
             logger.info("Digital diagnostics implemented")
+        if c[92] & 0x04:
+            logger.info("Address change sequence required")
+        if c[92] & 0x08:
+            logger.info("Received power is average power")
+        if c[92] & 0x10:
+            logger.info("Externally calibrated")
+        if c[92] & 0x20:
+            logger.info("Internally calibrated")
+            t, vcc, tx_bias, tx_pwr, rx_pwr = struct.unpack(
+                    ">hHHHH", d[96:106])
+            logger.info("Temperature %s C", t/256)
+            logger.info("VCC %s V", vcc*100e-6/256)
+            logger.info("TX %s mA, %s µW", tx_bias*2e-3/256, tx_pwr*.1/256)
+            logger.info("RX %s µW", rx_pwr*.1/256)
 
 
 class Kasli10(I2C):
@@ -511,6 +528,7 @@ if __name__ == "__main__":
                 sfp0 = SFF8472(bus)
                 # logger.warning(sfp0.ident())
                 sfp0.watch()
+                sfp0.report()
             elif action == "ee":
                 bus.enable(bus.EEM[args.eem])
                 ee = EEPROM(bus)
