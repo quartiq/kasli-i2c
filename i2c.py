@@ -157,11 +157,11 @@ class I2C(pyftdi.gpio.GpioController):
         yield
         self.stop()
 
-    def write_single(self, addr, data):
+    def write_single(self, addr, data, ack=True):
         with self.xfer():
             if not self.write_data(addr << 1):
                 raise I2CNACK("Address Write NACK", addr)
-            if not self.write_data(data):
+            if not self.write_data(data) and ack:
                 raise I2CNACK("Data NACK", reg)
 
     def read_single(self, addr):
@@ -170,14 +170,14 @@ class I2C(pyftdi.gpio.GpioController):
                 raise I2CNACK("Address Read NACK", addr)
             return self.read_data(ack=False)
 
-    def write_many(self, addr, reg, data):
+    def write_many(self, addr, reg, data, ack=True):
         with self.xfer():
             if not self.write_data(addr << 1):
                 raise I2CNACK("Address Write NACK", addr)
             if not self.write_data(reg):
                 raise I2CNACK("Reg NACK", reg)
-            for i in data:
-                if not self.write_data(i):
+            for i, byte in enumerate(data):
+                if not self.write_data(byte) and (ack or i < len(data) - 1):
                     raise I2CNACK("Data NACK", data)
 
     def read_many(self, addr, reg, length=1):
@@ -355,9 +355,10 @@ class Si5324:
 
 
 class EEPROM:
-    def __init__(self, bus, addr=0x50):
+    def __init__(self, bus, addr=0x50, pagesize=8):
         self.bus = bus
         self.addr = addr
+        self.pagesize = pagesize
 
     def dump(self):
         return bytes(self.bus.read_many(self.addr, 0, 1 << 8))
@@ -378,6 +379,12 @@ class EEPROM:
     def fmt_eui48(self):
         return "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}-{:02x}".format(
                 *self.eui48())
+
+    def write(self, addr, data):
+        for i in range(0, len(data), self.pagesize):
+            self.bus.write_many(self.addr, addr + i,
+                    data[i:i + self.pagesize], ack=False)
+            self.poll()
 
 
 class PCF8574:
@@ -565,7 +572,7 @@ if __name__ == "__main__":
                 logger.warning(ee.fmt_eui48())
                 logger.warning(ee.dump())
                 io = PCF8574(bus, addr=0x3e)
-                # io.write(0xff)
-                # logger.warning(hex(io.read()))
+                #io.write(0xff)
+                #logger.warning(hex(io.read()))
             else:
                 raise ValueError("unknown action", action)
