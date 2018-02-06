@@ -69,6 +69,22 @@ class I2C(pyftdi.gpio.GpioController):
     def __exit__(self, exc_type, exc_value, traceback):
         self.release()
 
+    def reset(self):
+        self.tick()
+        self.scl_oe(False)
+        self.tick()
+        self.sda_oe(False)
+        self.tick()
+        for i in range(9):
+            if self.sda_i():
+                break
+            self.scl_oe(True)
+            self.tick()
+            self.scl_oe(False)
+            self.tick()
+        assert self.scl_i()
+        assert self.sda_i()
+
     def start(self):
         assert self.scl_i()
         assert self.sda_i()
@@ -493,6 +509,7 @@ if __name__ == "__main__":
         args.action.extend(["scan", "si5324"])
 
     with bus:
+        bus.reset()
         for action in args.action:
             if action == "speed":
                 bus.test_speed()
