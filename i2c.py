@@ -189,13 +189,13 @@ class I2C(pyftdi.gpio.GpioController):
             self.restart()
             if not self.write_data((addr << 1) | 1):
                 raise I2CNACK("Address Read NACK", addr)
-            return [self.read_data(ack=i < length - 1) for i in range(length)]
+            return bytes(self.read_data(ack=i < length - 1) for i in range(length))
 
     def read_stream(self, addr, length=1):
         with self.xfer():
             if not self.write_data((addr << 1) | 1):
                 raise I2CNACK("Address Read NACK", addr)
-            return [self.read_data(ack=i < length - 1) for i in range(length)]
+            return bytes(self.read_data(ack=i < length - 1) for i in range(length))
 
     def poll(self, addr):
         with self.xfer():
@@ -295,7 +295,7 @@ class Si5324:
         while not self.locked():
             if time.monotonic() - t > timeout:
                 raise ValueError("lock timeout")
-        logging.info("locking took %g s", time.monotonic() - t)
+        logger.info("locking took %g s", time.monotonic() - t)
 
     def select_input(self, inp):
         self.write(3, self.read(3) & 0x3f | (inp << 6))
@@ -303,7 +303,7 @@ class Si5324:
 
     def setup(self, s):
         s = self.FrequencySettings().map(s)
-        assert self.ident() == [0x01, 0x82]
+        assert self.ident() == bytes([0x01, 0x82])
 
         # try:
         #     self.write(136, 0x80)  # RST_REG
@@ -368,7 +368,7 @@ class EEPROM:
         while not self.bus.poll(self.addr):
             if time.monotonic() - t > timeout:
                 raise ValueError("poll timeout")
-        logging.info("polling took %g s", time.monotonic() - t)
+        logger.debug("polling took %g s", time.monotonic() - t)
 
     def eui48(self):
         return self.bus.read_many(self.addr, 0xfa, 6)
@@ -406,17 +406,15 @@ class SFF8472:
         self.addr = 0x50, 0x51
 
     def dump(self):
-        #return (bytes(self.bus.read_many(self.addr[0], 0, 1 << 8)),
-        #        bytes(self.bus.read_many(self.addr[1], 0, 1 << 8)))
-        return (bytes(self.bus.read_stream(self.addr[0], 256)),
-                bytes(self.bus.read_stream(self.addr[1], 256)))
+        return (self.bus.read_stream(self.addr[0], 256),
+                self.bus.read_stream(self.addr[1], 256))
 
     def print_dump(self):
         for i in self.dump():
-            logger.warning("        " + " %2i" * 16, *range(16))
-            logger.warning("        " + " %02x" * 16, *range(16))
+            logger.warning("        " + " %2i"*16, *range(16))
+            logger.warning("        " + " %02x"*16, *range(16))
             for j in range(16):
-                logger.warning("%3i, %2x:" + " %2x" * 16, j*16, j*16,
+                logger.warning("%3i, %2x:" + " %2x"*16, j*16, j*16,
                         *i[j*16:(j + 1)*16])
 
     def watch(self, n=10):

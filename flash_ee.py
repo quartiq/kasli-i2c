@@ -13,7 +13,7 @@ if __name__ == "__main__":
     serial = "Kasli-v1.0-8"
     eem = 3
     ee_data = Sinara(
-        name="DIO-BNC".encode(),
+        name="DIO-BNC",
         id=Sinara.ids.index("DIO-BNC"),
         major=1, minor=1, variant=0, port=0,
         vendor=Sinara.vendors.index("Technosystem"),
@@ -25,7 +25,11 @@ if __name__ == "__main__":
         bus.reset()
         bus.enable(bus.EEM[eem])
         ee = EEPROM(bus)
-        logger.warning(ee.fmt_eui48())
-        logger.warning(ee.dump())
-        ee.write(0, ee_data.pack()[:ee_data._mandatory_size])
-        logger.warning(ee.dump())
+        d = ee.dump()
+        try:
+            logger.warning("valid data %s", Sinara.unpack(d))
+        except:
+            logger.warning(ee.fmt_eui48())
+            logger.warning("invalid data", exc_info=True)
+        ee.write(0, ee_data._replace(eui48=ee.eui48()).pack()[:128])
+        logger.warning(Sinara.unpack(ee.dump()))
