@@ -366,13 +366,39 @@ class EEPROM:
 class SFF8472:
     def __init__(self, bus):
         self.bus = bus
-        self.addr = 0x50
-
-    def ident(self):
-        return self.bus.read_stream(self.addr, 1)[0]
+        self.addr = 0x50, 0x51
 
     def dump(self):
-        return bytes(self.bus.read_stream(self.addr, 256))
+        return (bytes(self.bus.read_stream(self.addr[0], 256)),
+                bytes(self.bus.read_stream(self.addr[1], 256)))
+
+    def watch(self, n=10):
+        b0 = self.dump()
+        logger.warning(b0)
+        for i in range(n):
+            b = self.dump()
+            for j, (a0, a) in enumerate(zip(b0, b)):
+                if a0 == a:
+                    continue
+                logger.warning("run % 2i, idx %#02x: %#02x != %#02x",
+                        i, j, a0, a)
+                b0 = b
+
+    def report(self):
+        c, d = self.dump()
+        if d[92] & 0x04:
+            logger.info("Address change sequence required")
+        if d[92] & 0x08:
+            logger.info("Received power is average power")
+        else:
+            logger.info("Received power is OMA")
+        if d[92] & 0x10:
+            logger.info("Externally calibrated")
+        if d[92] & 0x20:
+            logger.info("Internally calibrated")
+            logger.info("Temperature %s C", struct.unpack(">h", d[96:98])/256)
+        if d[92] & 0x40:
+            logger.info("Digital diagnostics implemented")
 
 
 class Kasli10(I2C):
@@ -484,7 +510,7 @@ if __name__ == "__main__":
                 bus.enable(bus.SFP[0])
                 sfp0 = SFF8472(bus)
                 # logger.warning(sfp0.ident())
-                logger.warning(sfp0.dump())
+                sfp0.watch()
             elif action == "ee":
                 bus.enable(bus.EEM[args.eem])
                 ee = EEPROM(bus)
