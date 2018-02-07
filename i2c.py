@@ -515,6 +515,17 @@ class Kasli10(I2C):
                 if addr == ee.addr and (1 << port) in self.EEM:
                     logger.warning("EEM %i: %s", self.EEM.index(1 << port), ee.fmt_eui48())
 
+    def dump_eeproms(self, **kwargs):
+        ee = EEPROM(self, **kwargs)
+        for port in range(16):
+            logger.info("Scanning port %i", port)
+            if port in self.skip:
+                continue
+            self.select(port)
+            if self.poll(ee.addr):
+                eui48 = ee.fmt_eui48()
+                logger.info("Port %i: found %s", port, eui48)
+                open("data/{}.bin".format(eui48), "wb").write(ee.dump())
 
 if __name__ == "__main__":
     import argparse
@@ -545,6 +556,8 @@ if __name__ == "__main__":
                 bus.test_speed()
             elif action == "scan":
                 bus.scan_eui48()
+            elif action == "dump_eeproms":
+                bus.dump_eeproms()
             elif action == "si5324":
                 bus.enable(bus.SI5324)
                 si = Si5324(bus)
