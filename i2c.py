@@ -381,6 +381,7 @@ class EEPROM:
                 *self.eui48())
 
     def write(self, addr, data):
+        assert addr & (pagesize - 1) == 0
         for i in range(0, len(data), self.pagesize):
             self.bus.write_many(self.addr, addr + i,
                     data[i:i + self.pagesize], ack=False)
@@ -405,6 +406,18 @@ class SFF8472:
         self.bus = bus
         self.addr = 0x50, 0x51
 
+    def read_many(self, addr, reg, length=1, ack=True):
+        with self.bus.xfer():
+            if not self.bus.write_data(addr << 1) and ack:
+                raise I2CNACK("Address Write NACK", addr)
+            if not self.bus.write_data(reg) and ack:
+                raise I2CNACK("Reg NACK", reg)
+            self.bus.restart()
+            if not self.bus.write_data((addr << 1) | 1) and ack:
+                raise I2CNACK("Address Read NACK", addr)
+            return bytes(self.bus.read_data(ack=i < length - 1)
+                    for i in range(length))
+
     def select_page(self, page):
         with self.bus.xfer():
             for val in [0x00, 0x04, 0x02*page]:
@@ -413,12 +426,14 @@ class SFF8472:
 
     def dump(self):
         # self.select_page(0)
-        c = self.bus.read_stream(self.addr[0], 256)
+        # c = self.bus.read_stream(self.addr[0], 256)
         # if c[92] & 0x04:
         #     self.select_page(1)
-        d = self.bus.read_stream(self.addr[1], 256)
+        # d = self.bus.read_stream(self.addr[1], 256)
         # if c[92] & 0x04:
         #     self.select_page(0)
+        c = self.read_many(self.addr[0], 0, 256, ack=False)
+        d = self.read_many(self.addr[1], 0, 256, ack=False)
         return c, d
 
     def print_dump(self):
