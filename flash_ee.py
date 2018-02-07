@@ -32,7 +32,7 @@ if __name__ == "__main__":
         eui48 = ee.eui48()
         data = ee_data._replace(eui48=eui48)
         ee.write(0, data.pack()[:128])
-        open("data/{}.bin".format(eui48), "wb").write(data.pack())
+        open("data/{}.bin".format(ee.fmt_eui48(eui48)), "wb").write(data.pack())
         try:
             logger.info("data readback valid %s", Sinara.unpack(ee.dump()))
         except:

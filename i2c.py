@@ -376,12 +376,13 @@ class EEPROM:
     def eui64(self):
         return self.bus.read_many(self.addr, 0xf8, 8)
 
-    def fmt_eui48(self):
-        return "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}-{:02x}".format(
-                *self.eui48())
+    def fmt_eui48(self, eui48=None):
+        if eui48 is None:
+            eui48 = self.eui48()
+        return "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}-{:02x}".format(*eui48)
 
     def write(self, addr, data):
-        assert addr & (pagesize - 1) == 0
+        assert addr & (self.pagesize - 1) == 0
         for i in range(0, len(data), self.pagesize):
             self.bus.write_many(self.addr, addr + i,
                     data[i:i + self.pagesize], ack=False)
