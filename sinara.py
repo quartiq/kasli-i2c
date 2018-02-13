@@ -11,8 +11,7 @@ _SinaraTuple = namedtuple("Sinara", (
     "variant",       # B, board variant
     "port",          # B, board port
     "vendor",        # B, manufacturer/vendor
-    "serial",        # I, manufacturer-assigned serial number
-    "vendor_data",   # 4s, manufacturer data
+    "serial",        # 8s, manufacturer-assigned serial number
     "project_data",  # 16s, project reserved
     "user_data",     # 16s, user reserved
     "board_data",    # 64s, board data
@@ -22,10 +21,10 @@ _SinaraTuple = namedtuple("Sinara", (
 
 class Sinara(_SinaraTuple):
     _defaults = _SinaraTuple(name="Unknown", id=0, data_rev=0,
-            major=0, minor=0, variant=0, port=0, vendor=0, serial=0,
-            vendor_data=b"\x00"*4, project_data=b"\x00"*16,
+            major=0, minor=0, variant=0, port=0, vendor=0,
+            serial=b"\x00"*8, project_data=b"\x00"*16,
             user_data=b"\x00"*16, board_data=b"\x00"*64, eui48=b"\x00"*6)
-    _struct = struct.Struct(">I H 10s HBBBBB BI4s 16s 16s 64s 122s 6s")
+    _struct = struct.Struct(">I H 10s HBBBBBB 8s 16s 16s 64s 122s 6s")
     assert _struct.size == 256
     _magic = 0x391e
     _crc = zlib.crc32
@@ -97,8 +96,7 @@ if __name__ == "__main__":
             name="DIO-BNC",
             id=Sinara.ids.index("DIO-BNC"),
             data_rev=0, major=1, minor=1, variant=0, port=0,
-            vendor=Sinara.vendors.index("Technosystem"),
-            serial=0)
+            vendor=Sinara.vendors.index("Technosystem"))
     print(s)
     print(s.pack())
     assert Sinara.unpack(s.pack()) == s
