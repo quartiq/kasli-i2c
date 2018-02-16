@@ -579,22 +579,22 @@ if __name__ == "__main__":
                 si = Si5324(bus)
                 s = Si5324.FrequencySettings()
                 if True:
-                    s.n31 = 9370  # 100 MHz CKIN1
-                    s.n32 = 7139  # 114.285 MHz CKIN2 XTAL
-                    s.n1_hs = 9
-                    s.nc1_ls = 4
-                    s.nc2_ls = 4
-                    s.n2_hs = 10
-                    s.n2_ls = 33732 # 150MHz CKOUT
-                    s.bwsel = 3
-                else:
-                    s.n31 = 75  # 125 MHz CKIN1
-                    s.n32 = 6   # 10 MHz CKIN2
+                    s.n31 = 4993  # 100 MHz CKIN1
+                    s.n32 = 4565  # 114.285 MHz CKIN2 XTAL
                     s.n1_hs = 10
                     s.nc1_ls = 4
                     s.nc2_ls = 4
                     s.n2_hs = 10
-                    s.n2_ls = 300  # 125MHz CKOUT
+                    s.n2_ls = 19972  # 125MHz CKOUT
+                    s.bwsel = 4
+                else:
+                    s.n31 = 65  # 125 MHz CKIN1
+                    s.n32 = 52  # 100 MHz CKIN2 (not free run)
+                    s.n1_hs = 10
+                    s.nc1_ls = 4
+                    s.nc2_ls = 4
+                    s.n2_hs = 10
+                    s.n2_ls = 260  # 125MHz CKOUT
                     s.bwsel = 10
                 si.setup(s)
                 logger.warning("flags %s %s %s", si.has_xtal(),
