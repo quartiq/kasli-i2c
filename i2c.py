@@ -162,7 +162,7 @@ class I2C(pyftdi.gpio.GpioController):
             if not self.write_data(addr << 1):
                 raise I2CNACK("Address Write NACK", addr)
             if not self.write_data(data) and ack:
-                raise I2CNACK("Data NACK", reg)
+                raise I2CNACK("Data NACK", addr, data)
 
     def read_single(self, addr):
         with self.xfer():
@@ -189,13 +189,15 @@ class I2C(pyftdi.gpio.GpioController):
             self.restart()
             if not self.write_data((addr << 1) | 1):
                 raise I2CNACK("Address Read NACK", addr)
-            return bytes(self.read_data(ack=i < length - 1) for i in range(length))
+            return bytes(self.read_data(ack=i < length - 1)
+                         for i in range(length))
 
     def read_stream(self, addr, length=1):
         with self.xfer():
             if not self.write_data((addr << 1) | 1):
                 raise I2CNACK("Address Read NACK", addr)
-            return bytes(self.read_data(ack=i < length - 1) for i in range(length))
+            return bytes(self.read_data(ack=i < length - 1)
+                         for i in range(length))
 
     def poll(self, addr):
         with self.xfer():
@@ -454,14 +456,14 @@ class SFF8472:
                 for k, (a0, a) in enumerate(zip(c0, c)):
                     if a0 == a:
                         continue
-                    logger.warning("run % 2i, idx %i/%#02x(%3i): %#02x != %#02x",
-                            i, j, k, k, a0, a)
+                    logger.warning("run % 2i, idx %i/%#02x(%3i): "
+                                   "%#02x != %#02x", i, j, k, k, a0, a)
 
     def report(self):
         c, d = self.dump()
-        #logger.info("Part: %s, Serial: %s", c[40:40+16], c[68:68+16])
-        #logger.info("Vendor: %s", c[20:35])
-        #logger.info("OUI: %s", c[37:40])
+        # logger.info("Part: %s, Serial: %s", c[40:40+16], c[68:68+16])
+        # logger.info("Vendor: %s", c[20:35])
+        # logger.info("OUI: %s", c[37:40])
         if c[92] & 0x40:
             logger.info("Digital diagnostics implemented")
         if c[92] & 0x04:
@@ -529,7 +531,8 @@ class Kasli10(I2C):
                 if addr not in (self.sw0.addr, self.sw1.addr):
                     logger.info("Port %i: found %#02x", port, addr)
                 if addr == ee.addr and (1 << port) in self.EEM:
-                    logger.warning("EEM %i: %s", self.EEM.index(1 << port), ee.fmt_eui48())
+                    logger.warning("EEM %i: %s", self.EEM.index(1 << port),
+                                   ee.fmt_eui48())
 
     def dump_eeproms(self, **kwargs):
         ee = EEPROM(self, **kwargs)
@@ -542,6 +545,7 @@ class Kasli10(I2C):
                 eui48 = ee.fmt_eui48()
                 logger.info("Port %i: found %s", port, eui48)
                 open("data/{}.bin".format(eui48), "wb").write(ee.dump())
+
 
 if __name__ == "__main__":
     import argparse
@@ -610,7 +614,7 @@ if __name__ == "__main__":
                 logger.warning(ee.fmt_eui48())
                 logger.warning(ee.dump())
                 io = PCF8574(bus, addr=0x3e)
-                #io.write(0xff)
-                #logger.warning(hex(io.read()))
+                # io.write(0xff)
+                # logger.warning(hex(io.read()))
             else:
                 raise ValueError("unknown action", action)
