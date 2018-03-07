@@ -1,7 +1,7 @@
 import logging
 
 from sinara import Sinara
-from i2c import Kasli10, EEPROM
+from i2c import Kasli, EEPROM
 
 
 logger = logging.getLogger(__name__)
@@ -18,8 +18,8 @@ if __name__ == "__main__":
         data_rev=0, major=1, minor=1, variant=0, port=0,
         vendor=Sinara.vendors.index("Technosystem"))
 
-    bus = Kasli10()
-    bus.configure("ftdi://ftdi:4232h:{}/3".format(serial))
+    bus = Kasli()
+    bus.configure("ftdi://ftdi:4232h:{}/2".format(serial))
     with bus:
         bus.reset()
         bus.enable(bus.EEM[slot])

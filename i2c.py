@@ -482,7 +482,7 @@ class SFF8472:
             logger.info("RX %s µW", rx_pwr*.1/256)
 
 
-class Kasli10(I2C):
+class Kasli(I2C):
     EEM = [1 << i for i in (7, 5, 4, 3, 2, 1, 0, 6, 12, 13, 15, 14)]
     SFP = [1 << i for i in (8, 9, 10)]
     SI5324 = 1 << 11
@@ -530,9 +530,13 @@ class Kasli10(I2C):
             for addr in self.scan():
                 if addr not in (self.sw0.addr, self.sw1.addr):
                     logger.info("Port %i: found %#02x", port, addr)
-                if addr == ee.addr and (1 << port) in self.EEM:
-                    logger.warning("EEM %i: %s", self.EEM.index(1 << port),
-                                   ee.fmt_eui48())
+                if addr == ee.addr:
+                    if (1 << port) in self.EEM:
+                        logger.warning("EEM %i: %s", self.EEM.index(1 << port),
+                                       ee.fmt_eui48())
+                    else:
+                        logger.warning("EUI48 on port %i: %s", port,
+                                ee.fmt_eui48())
 
     def dump_eeproms(self, **kwargs):
         ee = EEPROM(self, **kwargs)
@@ -560,9 +564,11 @@ if __name__ == "__main__":
     p.add_argument("action", nargs="*")
     args = p.parse_args()
 
-    bus = Kasli10()
+    bus = Kasli()
     idx = args.serial if args.serial else args.index
-    bus.configure("ftdi://ftdi:4232h:{}/3".format(idx))
+    # port 2 for Kasli v1.1
+    # port 3 for Kasli v1.0
+    bus.configure("ftdi://ftdi:4232h:{}/2".format(idx))
     bus.skip = args.skip
     # EEM1 (port 5) SDA shorted on Kasli-v1.0-2
 
