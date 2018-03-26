@@ -42,3 +42,4 @@ if __name__ == "__main__":
             logger.info("data readback valid %s", Sinara.unpack(ee.dump()))
         except:
             logger.error("data readback invalid", exc_info=True)
+    bus._ftdi.usb_dev.attach_kernel_driver(2)
