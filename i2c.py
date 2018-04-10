@@ -14,6 +14,7 @@ class I2C(pyftdi.gpio.GpioController):
     SDAO = 1 << 1
     SDAI = 1 << 2
     EN = 1 << 4
+    RESET = 1 << 5
 
     def configure(self, url, **kwargs):
         super().configure(url, direction=0, **kwargs)
@@ -21,6 +22,15 @@ class I2C(pyftdi.gpio.GpioController):
 
     def tick(self):
         self._time += 1
+
+    def reset_switch(self):
+        # active low
+        self.write(self.EN)
+        self.tick()
+        self.write(self.EN | self.RESET)
+        self.tick()
+        for i in range(1000):
+            pass
 
     def scl_oe(self, oe):
         self.set_direction(self.SCL, bool(oe)*0xff)
@@ -35,9 +45,11 @@ class I2C(pyftdi.gpio.GpioController):
         return bool(self.read() & self.SDAI)
 
     def acquire(self):
-        self.write(self.EN)  # EN, !SCL, !SDA
+        self.write(self.EN | self.RESET)  # RESET_B, EN, !SCL, !SDA
         self.set_direction(self.EN, 0xff)  # enable USB-I2C
+        self.set_direction(self.RESET, 0xff)  # RESET_B deasserted
         self.tick()
+        self.reset_switch()
         i = self.read()
         if not i & self.EN:
             raise ValueError("EN low despite enable")
