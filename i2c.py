@@ -494,6 +494,46 @@ class SFF8472:
             logger.info("RX %s µW", rx_pwr*.1/256)
 
 
+class LM75:
+    """Temperature sensor with overtemp shutdown output"""
+    def __init__(self, bus, addr=0x48):
+        self.bus = bus
+        self.addr = addr
+
+    def get_temperature(self):
+        return self.mu_to_temp(self.bus.read_many(self.addr, 0x00, 2))
+
+    def get_hysteresis(self):
+        return self.mu_to_temp(self.bus.read_many(self.addr, 0x02, 2))
+
+    def get_shutdown(self):
+        return self.mu_to_temp(self.bus.read_many(self.addr, 0x03, 2))
+
+    def set_hysteresis(self, t):
+        self.bus.write_many(self.addr, 0x02, self.temp_to_mu(t))
+
+    def set_shutdown(self, t):
+        self.bus.write_many(self.addr, 0x03, self.temp_to_mu(t))
+
+    def mu_to_temp(self, t):
+        return t[0] + t[1]/(1<<8)
+
+    def temp_to_mu(self, t):
+        a, b = divmod(t, 1)
+        return [int(a), int(b*(1 << 8))]
+
+    def set_config(self, fault_queue=0, os_polarity=0,
+            interrupt=0, shutdown=0):
+        cfg = ((fault_queue << 3) | (os_polarity << 2) |
+                (interrupt << 1) | (shutdown << 0))
+        self.bus.write_many(self.addr, 0x01, [cfg])
+
+    def get_config(self):
+        cfg = self.bus.read_many(self.addr, 0x01, 1)[0]
+        return dict(fault_queue=cfg >> 3, os_polarity=(cfg >> 2) & 1,
+                    interrupt=(cfg >> 1) & 1, shutdown=cfg & 1)
+
+
 class Kasli(I2C):
     EEM = [1 << i for i in (7, 5, 4, 3, 2, 1, 0, 6, 12, 13, 15, 14)]
     SFP = [1 << i for i in (8, 9, 10)]
