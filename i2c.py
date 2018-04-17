@@ -516,7 +516,7 @@ class LM75:
         self.bus.write_many(self.addr, 0x03, self.temp_to_mu(t))
 
     def mu_to_temp(self, t):
-        return t[0] + t[1]/(1<<8)
+        return t[0] + t[1]/(1 << 8)
 
     def temp_to_mu(self, t):
         a, b = divmod(t, 1)
@@ -532,6 +532,12 @@ class LM75:
         cfg = self.bus.read_many(self.addr, 0x01, 1)[0]
         return dict(fault_queue=cfg >> 3, os_polarity=(cfg >> 2) & 1,
                     interrupt=(cfg >> 1) & 1, shutdown=cfg & 1)
+
+    def report(self):
+        logger.info("config: %s", self.get_config())
+        logger.info("temperature: %.1f C", self.get_temperature())
+        logger.info("hysteresis: %.1f C", self.get_hysteresis())
+        logger.info("shutdown: %.1f C", self.get_shutdown())
 
 
 class Kasli(I2C):
@@ -636,6 +642,10 @@ if __name__ == "__main__":
                 bus.scan_eui48()
             elif action == "dump_eeproms":
                 bus.dump_eeproms()
+            elif action == "lm75":
+                bus.enable(bus.EEM[args.eem])
+                lm75 = LM75(bus)
+                lm75.report()
             elif action == "si5324":
                 bus.enable(bus.SI5324)
                 si = Si5324(bus)
