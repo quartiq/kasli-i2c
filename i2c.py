@@ -587,11 +587,12 @@ class Kasli(I2C):
         clock = (self._time - t)/2/(time.monotonic() - t0)
         logger.info("I2C speed ~%s Hz", clock)
 
-    def scan_eui48(self):
+    def scan_devices(self):
         self.sw0.get()
         self.sw1.get()
 
         ee = EEPROM(self)
+        lm = LM75(self)
 
         for port in range(16):
             logger.info("Scanning port %i", port)
@@ -608,6 +609,13 @@ class Kasli(I2C):
                     else:
                         logger.warning("EUI48 on port %i: %s", port,
                                 ee.fmt_eui48())
+                if addr == lm.addr:
+                    if (1 << port) in self.EEM:
+                        logger.warning("EEM %i: %.1f C", self.EEM.index(1 << port),
+                                       lm.get_temperature())
+                    else:
+                        logger.warning("LM75 on port %i: %.1f C", port,
+                                       lm.get_temperature())
 
     def dump_eeproms(self, **kwargs):
         ee = EEPROM(self, **kwargs)
@@ -625,7 +633,7 @@ class Kasli(I2C):
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
 
     p = argparse.ArgumentParser()
     p.add_argument("-i", "--index", default=0, type=int)
@@ -652,7 +660,7 @@ if __name__ == "__main__":
             if action == "speed":
                 bus.test_speed()
             elif action == "scan":
-                bus.scan_eui48()
+                bus.scan_devices()
             elif action == "dump_eeproms":
                 bus.dump_eeproms()
             elif action == "lm75":
@@ -699,3 +707,7 @@ if __name__ == "__main__":
                 # logger.warning(hex(io.read()))
             else:
                 raise ValueError("unknown action", action)
+        # would like to reattach the console port as pyftdi detaches all
+        # interfaces indiscriminately. but since it also doesn't claim the
+        # serial port interface, we can only release the i2c interface...
+        bus._ftdi.usb_dev.attach_kernel_driver(2)
