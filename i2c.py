@@ -3,13 +3,14 @@ import logging
 import time
 import struct
 
-import pyftdi.gpio
+from pyftdi.ftdi import Ftdi
+from sinara import Sinara
 
 
 logger = logging.getLogger(__name__)
 
 
-class I2C(pyftdi.gpio.GpioController):
+class I2C:
     SCL = 1 << 0
     SDAO = 1 << 1
     SDAI = 1 << 2
@@ -17,9 +18,10 @@ class I2C(pyftdi.gpio.GpioController):
     RESET_B = 1 << 5
     max_clock_stretch = 100
 
-    def configure(self, url, **kwargs):
-        super().configure(url, direction=0, **kwargs)
+    def __init__(self, dev):
+        self.dev = dev
         self._time = 0
+        self._direction = 0
 
     def tick(self):
         self._time += 1
@@ -31,11 +33,27 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         time.sleep(.01)
 
+    def set_direction(self, direction):
+        self._direction = direction
+        self.dev.set_bitmode(direction, Ftdi.BITMODE_BITBANG)
+
+    def write(self, data):
+        self.dev.write_data(bytes([data]))
+
+    def read(self):
+        return self.dev.read_pins()
+
     def scl_oe(self, oe):
-        self.set_direction(self.SCL, bool(oe)*0xff)
+        d = (self._direction & ~self.SCL)
+        if oe:
+            d |= self.SCL
+        self.set_direction(d)
 
     def sda_oe(self, oe):
-        self.set_direction(self.SDAO, bool(oe)*0xff)
+        d = self._direction & ~self.SDAO
+        if oe:
+            d |= self.SDAO
+        self.set_direction(d)
 
     def scl_i(self):
         return bool(self.read() & self.SCL)
@@ -52,10 +70,9 @@ class I2C(pyftdi.gpio.GpioController):
 
     def acquire(self):
         self.write(self.EN | self.RESET_B)  # RESET_B, EN, !SCL, !SDA
-        self.set_direction(self.EN, 0xff)  # enable USB-I2C
-        self.set_direction(self.RESET_B, 0xff)  # RESET_B deasserted
+        self.set_direction(self.EN | self.RESET_B)  # enable USB-I2C
         self.tick()
-        self.reset_switch()
+        #self.reset_switch()
         i = self.read()
         if not i & self.EN:
             raise ValueError("EN low despite enable")
@@ -67,8 +84,9 @@ class I2C(pyftdi.gpio.GpioController):
             raise ValueError("SDAO stuck low")
 
     def release(self):
-        self.write(0)
-        self.set_direction(0xff, 0x00)  # all high-Z
+        #self.reset_switch()
+        self.set_direction(self.EN | self.RESET_B)
+        self.write(self.RESET_B)
         self.tick()
         i = self.read()
         if i & self.EN:
@@ -246,6 +264,9 @@ class PCA9548:
     def get(self):
         return self.bus.read_single(self.addr)
 
+    def report(self):
+        logger.info("PCA9548(switch): %#04x", self.get())
+
 
 class Si5324:
     class FrequencySettings:
@@ -377,6 +398,12 @@ class Si5324:
                 55, 131, 132, 137, 138, 139, 142, 143, 136):
             print("{: 4d}, {:02X}h".format(i, self.read(i)))
 
+    def report(self):
+        logger.info("SI5324(DCXO): has_xtal: %s, has_clkin1: %s, "
+                    "has_clkin2: %s, locked: %s",
+                    self.has_xtal(), self.has_clkin1(),
+                    self.has_clkin2(), self.locked())
+
 
 class EEPROM:
     def __init__(self, bus, addr=0x50, pagesize=8):
@@ -412,6 +439,9 @@ class EEPROM:
                     data[i:i + self.pagesize], ack=False)
             self.poll()
 
+    def report(self):
+        logger.info("24C0x(EEPROM): EUI48: %s", self.fmt_eui48())
+
 
 class PCF8574:
     """Octal I/O extender, 100 µA pullups, strong rising pulse, open-drain"""
@@ -424,6 +454,9 @@ class PCF8574:
 
     def read(self):
         return self.bus.read_single(self.addr)
+
+    def report(self):
+        logger.info("PCF8574(IO): %#04x", self.read())
 
 
 class SFF8472:
@@ -483,8 +516,8 @@ class SFF8472:
 
     def report(self):
         c, d = self.dump()
-        logger.info("Part: %s, Serial: %s", c[40:40+16], c[68:68+16])
-        logger.info("Vendor: %s", c[20:35])
+        logger.info("SFF8472(SFP): vendor: %s, part: %s, serial: %s",
+                c[20:35].strip(), c[40:40+16].strip(), c[68:68+16].strip())
         logger.info("OUI: %s", c[37:40])
         if c[92] & 0x40:
             logger.info("Digital diagnostics implemented")
@@ -544,10 +577,9 @@ class LM75:
                     interrupt=(cfg >> 1) & 1, shutdown=cfg & 1)
 
     def report(self):
-        logger.info("config: %s", self.get_config())
-        logger.info("temperature: %.1f C", self.get_temperature())
-        logger.info("hysteresis: %.1f C", self.get_hysteresis())
-        logger.info("shutdown: %.1f C", self.get_shutdown())
+        logger.info("LM75: config: %s, T=%.1f C, H=%.1f C, S=%.1f C",
+                    self.get_config(), self.get_temperature(),
+                    self.get_hysteresis(), self.get_shutdown())
 
 
 class Kasli(I2C):
@@ -556,8 +588,8 @@ class Kasli(I2C):
     SI5324 = 1 << 11
     skip = []
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.sw0 = PCA9548(self, 0x70)
         self.sw1 = PCA9548(self, 0x71)
@@ -569,6 +601,15 @@ class Kasli(I2C):
         assert not any(ports & (1 << i) for i in self.skip)
         self.sw0.set(ports & 0xff)
         self.sw1.set(ports >> 8)
+
+    def names(self, ports):
+        names = []
+        for p, k in [("EEM", self.EEM), ("SFP", self.SFP),
+                     ("LOC", [self.SI5324])]:
+            for i, j in enumerate(k):
+                if j & ports:
+                    names.append("{}{}".format(p, i))
+        return ", ".join(names)
 
     def test_speed(self):
         t = self._time
@@ -590,29 +631,36 @@ class Kasli(I2C):
 
         ee = EEPROM(self)
         lm = LM75(self)
+        io = PCF8574(self, addr=0x3e)
+        si = Si5324(self)
+        sff = SFF8472(self)
 
         for port in range(16):
-            logger.info("Scanning port %i", port)
+            logger.debug("Scanning port %i", port)
             if port in self.skip:
                 continue
             self.select(port)
+            names = self.names(1 << port)
+            logger.info("%s: ...", names)
             for addr in self.scan():
-                if addr not in (self.sw0.addr, self.sw1.addr):
-                    logger.info("Port %i: found %#02x", port, addr)
+                if addr in (self.sw0.addr, self.sw1.addr):
+                    continue
                 if addr == ee.addr:
-                    if (1 << port) in self.EEM:
-                        logger.warning("EEM %i: %s", self.EEM.index(1 << port),
-                                       ee.fmt_eui48())
-                    else:
-                        logger.warning("EUI48 on port %i: %s", port,
-                                ee.fmt_eui48())
-                if addr == lm.addr:
-                    if (1 << port) in self.EEM:
-                        logger.warning("EEM %i: %.1f C", self.EEM.index(1 << port),
-                                       lm.get_temperature())
-                    else:
-                        logger.warning("LM75 on port %i: %.1f C", port,
-                                       lm.get_temperature())
+                    ee.report()
+                    try:
+                        logger.info("Sinara: %s", Sinara.unpack(ee.dump()))
+                    except:
+                        logger.info("Sinara data invalid")
+                    if "SFP" in names:
+                        sff.report()
+                elif addr == lm.addr:
+                    lm.report()
+                elif addr == io.addr:
+                    io.report()
+                elif addr == si.addr:
+                    si.report()
+                else:
+                    logger.debug("%s: ignoring addr %#02x", names, addr)
 
     def dump_eeproms(self, **kwargs):
         ee = EEPROM(self, **kwargs)
@@ -644,71 +692,75 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=[logging.WARNING, logging.INFO, logging.DEBUG][args.verbose])
 
-    bus = Kasli()
     idx = args.serial if args.serial else args.index
     # port 2 for Kasli v1.1
     # port 3 for Kasli v1.0
-    bus.configure("ftdi://ftdi:4232h:{}/{}".format(idx, args.port))
-    bus.skip = args.skip
-    # EEM1 (port 5) SDA shorted on Kasli-v1.0-2
+    dev = Ftdi()
+    dev.open_bitbang_from_url("ftdi://ftdi:4232h:{}/{}".format(idx, args.port))
+    try:
+        bus = Kasli(dev)
+        bus.skip = args.skip
+        # EEM1 (port 5) SDA shorted on Kasli-v1.0-2
 
-    if not args.action:
-        args.action.extend(["scan", "si5324"])
+        if not args.action:
+            args.action.extend(["scan"])
 
-    with bus:
-        bus.clear()
-        for action in args.action:
-            if action == "speed":
-                bus.test_speed()
-            elif action == "scan":
-                bus.scan_devices()
-            elif action == "dump_eeproms":
-                bus.dump_eeproms()
-            elif action == "lm75":
-                bus.enable(bus.EEM[args.eem])
-                lm75 = LM75(bus)
-                lm75.report()
-            elif action == "si5324":
-                bus.enable(bus.SI5324)
-                si = Si5324(bus)
-                s = Si5324.FrequencySettings()
-                if True:
-                    s.n31 = 4993  # 100 MHz CKIN1
-                    s.n32 = 4565  # 114.285 MHz CKIN2 XTAL
-                    s.n1_hs = 10
-                    s.nc1_ls = 4
-                    s.nc2_ls = 4
-                    s.n2_hs = 10
-                    s.n2_ls = 19972  # 125MHz CKOUT
-                    s.bwsel = 4
+        with bus:
+            bus.clear()
+            for action in args.action:
+                if action == "speed":
+                    bus.test_speed()
+                elif action == "scan":
+                    bus.scan_devices()
+                elif action == "dump_eeproms":
+                    bus.dump_eeproms()
+                elif action == "lm75":
+                    bus.enable(bus.EEM[args.eem])
+                    lm75 = LM75(bus)
+                    lm75.report()
+                elif action == "si5324":
+                    bus.enable(bus.SI5324)
+                    si = Si5324(bus)
+                    s = Si5324.FrequencySettings()
+                    if True:
+                        s.n31 = 4993  # 100 MHz CKIN1
+                        s.n32 = 4565  # 114.285 MHz CKIN2 XTAL
+                        s.n1_hs = 10
+                        s.nc1_ls = 4
+                        s.nc2_ls = 4
+                        s.n2_hs = 10
+                        s.n2_ls = 19972  # 125MHz CKOUT
+                        s.bwsel = 4
+                    else:
+                        s.n31 = 65  # 125 MHz CKIN1
+                        s.n32 = 52  # 100 MHz CKIN2 (not free run)
+                        s.n1_hs = 10
+                        s.nc1_ls = 4
+                        s.nc2_ls = 4
+                        s.n2_hs = 10
+                        s.n2_ls = 260  # 125MHz CKOUT
+                        s.bwsel = 10
+                    si.setup(s)
+                    logger.warning("flags %s %s %s", si.has_xtal(),
+                            si.has_clkin2(), si.locked())
+                elif action == "sfp":
+                    bus.enable(bus.SFP[args.eem])
+                    sfp0 = SFF8472(bus)
+                    sfp0.report()
+                    sfp0.watch(n=0)
+                elif action == "ee":
+                    bus.enable(bus.EEM[args.eem])
+                    ee = EEPROM(bus)
+                    logger.warning(ee.fmt_eui48())
+                    logger.warning(ee.dump())
+                    io = PCF8574(bus, addr=0x3e)
+                    # io.write(0xff)
+                    # logger.warning(hex(io.read()))
                 else:
-                    s.n31 = 65  # 125 MHz CKIN1
-                    s.n32 = 52  # 100 MHz CKIN2 (not free run)
-                    s.n1_hs = 10
-                    s.nc1_ls = 4
-                    s.nc2_ls = 4
-                    s.n2_hs = 10
-                    s.n2_ls = 260  # 125MHz CKOUT
-                    s.bwsel = 10
-                si.setup(s)
-                logger.warning("flags %s %s %s", si.has_xtal(),
-                        si.has_clkin2(), si.locked())
-            elif action == "sfp":
-                bus.enable(bus.SFP[args.eem])
-                sfp0 = SFF8472(bus)
-                sfp0.report()
-                sfp0.watch(n=0)
-            elif action == "ee":
-                bus.enable(bus.EEM[args.eem])
-                ee = EEPROM(bus)
-                logger.warning(ee.fmt_eui48())
-                logger.warning(ee.dump())
-                io = PCF8574(bus, addr=0x3e)
-                # io.write(0xff)
-                # logger.warning(hex(io.read()))
-            else:
-                raise ValueError("unknown action", action)
-        # would like to reattach the console port as pyftdi detaches all
-        # interfaces indiscriminately. but since it also doesn't claim the
-        # serial port interface, we can only release the i2c interface...
-        bus._ftdi.usb_dev.attach_kernel_driver(2)
+                    raise ValueError("unknown action", action)
+            # would like to reattach the console port as pyftdi detaches all
+            # interfaces indiscriminately. but since it also doesn't claim the
+            # serial port interface, we can only release the i2c interface...
+            #dev.usb_dev.attach_kernel_driver(2)
+    finally:
+        dev.close()
