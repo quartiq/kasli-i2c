@@ -14,7 +14,7 @@ class I2C(pyftdi.gpio.GpioController):
     SDAO = 1 << 1
     SDAI = 1 << 2
     EN = 1 << 4
-    RESET = 1 << 5
+    RESET_B = 1 << 5
     max_clock_stretch = 100
 
     def configure(self, url, **kwargs):
@@ -25,10 +25,9 @@ class I2C(pyftdi.gpio.GpioController):
         self._time += 1
 
     def reset_switch(self):
-        # active low
         self.write(self.EN)
         self.tick()
-        self.write(self.EN | self.RESET)
+        self.write(self.EN | self.RESET_B)
         self.tick()
         time.sleep(.01)
 
@@ -48,13 +47,13 @@ class I2C(pyftdi.gpio.GpioController):
         for i in range(self.max_clock_stretch):
             r = self.read()
             if r & self.SCL:
-                return r
+                return bool(r & self.SDAI)
         raise ValueError("SCL low exceeded clock stretch limit")
 
     def acquire(self):
-        self.write(self.EN | self.RESET)  # RESET_B, EN, !SCL, !SDA
+        self.write(self.EN | self.RESET_B)  # RESET_B, EN, !SCL, !SDA
         self.set_direction(self.EN, 0xff)  # enable USB-I2C
-        self.set_direction(self.RESET, 0xff)  # RESET_B deasserted
+        self.set_direction(self.RESET_B, 0xff)  # RESET_B deasserted
         self.tick()
         self.reset_switch()
         i = self.read()
@@ -71,7 +70,7 @@ class I2C(pyftdi.gpio.GpioController):
         self.write(0)
         self.set_direction(0xff, 0x00)  # all high-Z
         self.tick()
-        i = self.clock_stretch()
+        i = self.read()
         if i & self.EN:
             raise ValueError("EN high despite disable")
         if not i & self.SCL:
@@ -88,20 +87,19 @@ class I2C(pyftdi.gpio.GpioController):
     def __exit__(self, exc_type, exc_value, traceback):
         self.release()
 
-    def reset(self):
+    def clear(self):
         self.tick()
         self.scl_oe(False)
         self.tick()
         self.sda_oe(False)
         self.tick()
         for i in range(9):
-            if self.sda_i():
+            if self.clock_stretch():
                 break
             self.scl_oe(True)
             self.tick()
             self.scl_oe(False)
             self.tick()
-        assert self.clock_stretch() & self.SDAI
 
     def start(self):
         assert self.scl_i()
@@ -129,7 +127,7 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         self.scl_oe(False)
         self.tick()
-        assert self.clock_stretch() & self.SDAI
+        assert self.clock_stretch()
         self.start()
 
     def write_data(self, data):
@@ -139,7 +137,7 @@ class I2C(pyftdi.gpio.GpioController):
             self.tick()
             self.scl_oe(False)
             self.tick()
-            if bool(self.clock_stretch() & self.SDAI) != bit:
+            if self.clock_stretch() != bit:
                 raise ValueError("Arbitration lost")
             self.scl_oe(True)
         # check ACK
@@ -147,7 +145,7 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         self.scl_oe(False)
         self.tick()
-        ack = not bool(self.clock_stretch() & self.SDAI)
+        ack = not self.clock_stretch()
         self.scl_oe(True)
         self.sda_oe(True)
         # SCL low, SDA low
@@ -160,8 +158,7 @@ class I2C(pyftdi.gpio.GpioController):
             self.tick()
             self.scl_oe(False)
             self.tick()
-            bit = bool(self.clock_stretch() & self.SDAI)
-            if bit:
+            if self.clock_stretch():
                 data |= 1 << 7 - i
             self.scl_oe(True)
         # send ACK
@@ -169,7 +166,7 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         self.scl_oe(False)
         self.tick()
-        if bool(self.clock_stretch() & self.SDAI) != ack:
+        if self.clock_stretch() == ack:
             raise ValueError("Arbitration lost")
         self.scl_oe(True)
         self.sda_oe(True)
@@ -486,9 +483,9 @@ class SFF8472:
 
     def report(self):
         c, d = self.dump()
-        # logger.info("Part: %s, Serial: %s", c[40:40+16], c[68:68+16])
-        # logger.info("Vendor: %s", c[20:35])
-        # logger.info("OUI: %s", c[37:40])
+        logger.info("Part: %s, Serial: %s", c[40:40+16], c[68:68+16])
+        logger.info("Vendor: %s", c[20:35])
+        logger.info("OUI: %s", c[37:40])
         if c[92] & 0x40:
             logger.info("Digital diagnostics implemented")
         if c[92] & 0x04:
@@ -633,21 +630,25 @@ class Kasli(I2C):
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.WARNING)
-
     p = argparse.ArgumentParser()
     p.add_argument("-i", "--index", default=0, type=int)
     p.add_argument("-s", "--serial", default=None)
+    p.add_argument("-p", "--port", default=2, type=int)
     p.add_argument("-k", "--skip", action="append", default=[], type=int)
     p.add_argument("-e", "--eem", default=None, type=int)
+    p.add_argument("-v", "--verbose", default=0, action="count")
+
     p.add_argument("action", nargs="*")
     args = p.parse_args()
+
+    logging.basicConfig(
+        level=[logging.WARNING, logging.INFO, logging.DEBUG][args.verbose])
 
     bus = Kasli()
     idx = args.serial if args.serial else args.index
     # port 2 for Kasli v1.1
     # port 3 for Kasli v1.0
-    bus.configure("ftdi://ftdi:4232h:{}/2".format(idx))
+    bus.configure("ftdi://ftdi:4232h:{}/{}".format(idx, args.port))
     bus.skip = args.skip
     # EEM1 (port 5) SDA shorted on Kasli-v1.0-2
 
@@ -655,7 +656,7 @@ if __name__ == "__main__":
         args.action.extend(["scan", "si5324"])
 
     with bus:
-        bus.reset()
+        bus.clear()
         for action in args.action:
             if action == "speed":
                 bus.test_speed()
@@ -696,7 +697,7 @@ if __name__ == "__main__":
                 bus.enable(bus.SFP[args.eem])
                 sfp0 = SFF8472(bus)
                 sfp0.report()
-                sfp0.watch()
+                sfp0.watch(n=0)
             elif action == "ee":
                 bus.enable(bus.EEM[args.eem])
                 ee = EEPROM(bus)
