@@ -15,6 +15,7 @@ class I2C(pyftdi.gpio.GpioController):
     SDAI = 1 << 2
     EN = 1 << 4
     RESET = 1 << 5
+    max_clock_stretch = 100
 
     def configure(self, url, **kwargs):
         super().configure(url, direction=0, **kwargs)
@@ -29,8 +30,7 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         self.write(self.EN | self.RESET)
         self.tick()
-        for i in range(1000):
-            pass
+        time.sleep(.01)
 
     def scl_oe(self, oe):
         self.set_direction(self.SCL, bool(oe)*0xff)
@@ -43,6 +43,13 @@ class I2C(pyftdi.gpio.GpioController):
 
     def sda_i(self):
         return bool(self.read() & self.SDAI)
+
+    def clock_stretch(self):
+        for i in range(self.max_clock_stretch):
+            r = self.read()
+            if r & self.SCL:
+                return r
+        raise ValueError("SCL low exceeded clock stretch limit")
 
     def acquire(self):
         self.write(self.EN | self.RESET)  # RESET_B, EN, !SCL, !SDA
@@ -64,7 +71,7 @@ class I2C(pyftdi.gpio.GpioController):
         self.write(0)
         self.set_direction(0xff, 0x00)  # all high-Z
         self.tick()
-        i = self.read()
+        i = self.clock_stretch()
         if i & self.EN:
             raise ValueError("EN high despite disable")
         if not i & self.SCL:
@@ -94,12 +101,12 @@ class I2C(pyftdi.gpio.GpioController):
             self.tick()
             self.scl_oe(False)
             self.tick()
-        assert self.scl_i()
-        assert self.sda_i()
+        assert self.clock_stretch() & self.SDAI
 
     def start(self):
         assert self.scl_i()
-        assert self.sda_i()
+        if not self.sda_i():
+            raise ValueError("Arbitration lost")
         self.sda_oe(True)
         self.tick()
         self.scl_oe(True)
@@ -110,10 +117,11 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         self.scl_oe(False)
         self.tick()
+        self.clock_stretch()
         self.sda_oe(False)
         self.tick()
-        assert self.scl_i()
-        assert self.sda_i()
+        if not self.sda_i():
+            raise ValueError("Arbitration lost")
 
     def restart(self):
         # SCL low, SDA low
@@ -121,6 +129,7 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         self.scl_oe(False)
         self.tick()
+        assert self.clock_stretch() & self.SDAI
         self.start()
 
     def write_data(self, data):
@@ -130,13 +139,15 @@ class I2C(pyftdi.gpio.GpioController):
             self.tick()
             self.scl_oe(False)
             self.tick()
+            if bool(self.clock_stretch() & self.SDAI) != bit:
+                raise ValueError("Arbitration lost")
             self.scl_oe(True)
         # check ACK
         self.sda_oe(False)
         self.tick()
         self.scl_oe(False)
         self.tick()
-        ack = not self.sda_i()
+        ack = not bool(self.clock_stretch() & self.SDAI)
         self.scl_oe(True)
         self.sda_oe(True)
         # SCL low, SDA low
@@ -149,7 +160,7 @@ class I2C(pyftdi.gpio.GpioController):
             self.tick()
             self.scl_oe(False)
             self.tick()
-            bit = self.sda_i()
+            bit = bool(self.clock_stretch() & self.SDAI)
             if bit:
                 data |= 1 << 7 - i
             self.scl_oe(True)
@@ -158,6 +169,8 @@ class I2C(pyftdi.gpio.GpioController):
         self.tick()
         self.scl_oe(False)
         self.tick()
+        if bool(self.clock_stretch() & self.SDAI) != ack:
+            raise ValueError("Arbitration lost")
         self.scl_oe(True)
         self.sda_oe(True)
         # SCL low, SDA low
