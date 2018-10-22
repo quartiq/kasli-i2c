@@ -72,7 +72,8 @@ class I2C:
         self.write(self.EN | self.RESET_B)  # RESET_B, EN, !SCL, !SDA
         self.set_direction(self.EN | self.RESET_B)  # enable USB-I2C
         self.tick()
-        #self.reset_switch()
+        # self.reset_switch()
+        time.sleep(.1)
         i = self.read()
         if not i & self.EN:
             raise ValueError("EN low despite enable")
@@ -84,7 +85,7 @@ class I2C:
             raise ValueError("SDAO stuck low")
 
     def release(self):
-        #self.reset_switch()
+        # self.reset_switch()
         self.set_direction(self.EN | self.RESET_B)
         self.write(self.RESET_B)
         self.tick()
@@ -243,10 +244,43 @@ class I2C:
         with self.xfer():
             return self.write_data(addr << 1)
 
-    def scan(self):
-        for addr in range(1 << 7):
+    def scan(self, addrs=None):
+        for addr in addrs or range(1 << 7):
             if self.poll(addr):
-                    yield addr
+                yield addr
+
+    def scan_tree(self, addr_mask=(0x70, 0x78), addrs=None, skip=[]):
+        found = [addr for addr in self.scan(addrs) if addr not in skip]
+        for addr in found:
+            if (addr ^ addr_mask[0]) & addr_mask[1]:
+                yield [], addr
+                continue
+            for port in range(8):
+                self.write_single(addr, 1 << port)
+                for path, sub in self.scan_tree(
+                    addr_mask, addrs, skip + found):
+                    yield [(addr, port)] + path, sub
+            self.write_single(addr, 0)
+
+    def make_graph(self, it):
+        root = {}
+        for path, addr in it:
+            scope = root
+            for sw, port in path:
+                if sw not in scope:
+                    scope[sw] = [{} for _ in range(8)]
+                scope = scope[sw][port]
+            scope[addr] = None
+        return root
+
+    def test_speed(self):
+        t = self._time
+        t0 = time.monotonic()
+        for _ in self.scan_tree():
+            pass
+        clock = (self._time - t)/2/(time.monotonic() - t0)
+        logger.info("I2C speed ~%s Hz", clock)
+        return clock
 
 
 class I2CNACK(Exception):
@@ -582,96 +616,85 @@ class LM75:
                     self.get_hysteresis(), self.get_shutdown())
 
 
+class SinaraEEPROM(EEPROM):
+    def report(self):
+        super().report()
+        try:
+            logger.info("Sinara: %s", Sinara.unpack(self.dump()))
+        except:
+            logger.info("Sinara data invalid")
+
+
 class Kasli(I2C):
-    EEM = [1 << i for i in (7, 5, 4, 3, 2, 1, 0, 6, 12, 13, 15, 14)]
-    SFP = [1 << i for i in (8, 9, 10)]
-    SI5324 = 1 << 11
+    ports = {
+        "ROOT": [],
+        "EEM0": [(0x70, 7)],
+        "EEM1": [(0x70, 5)],
+        "EEM2": [(0x70, 4)],
+        "EEM3": [(0x70, 3)],
+        "EEM4": [(0x70, 2)],
+        "EEM5": [(0x70, 1)],
+        "EEM6": [(0x70, 0)],
+        "EEM7": [(0x70, 6)],
+        "EEM8": [(0x71, 4)],
+        "EEM9": [(0x71, 5)],
+        "EEM10": [(0x71, 7)],
+        "EEM11": [(0x71, 6)],
+        "SFP0": [(0x71, 0)],
+        "SFP1": [(0x71, 1)],
+        "SFP2": [(0x71, 2)],
+        "LOC0": [(0x71, 3)],
+    }
     skip = []
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.sw0 = PCA9548(self, 0x70)
-        self.sw1 = PCA9548(self, 0x71)
-
     def select(self, port):
-        self.enable(1 << port)
+        assert port not in self.skip
+        self.enable(self.ports[port])
 
-    def enable(self, ports):
-        assert not any(ports & (1 << i) for i in self.skip)
-        self.sw0.set(ports & 0xff)
-        self.sw1.set(ports >> 8)
+    def enable(self, *ports):
+        assert not any(port in self.skip for port in ports)
+        bits = {0x70: 0, 0x71: 0}
+        for port in ports:
+            assert port not in self.skip
+            for addr, p in self.ports[port]:
+                bits[addr] |= (1 << p)
+        for addr in sorted(bits):
+            self.write_single(addr, bits[addr])
 
-    def names(self, ports):
-        names = []
-        for p, k in [("EEM", self.EEM), ("SFP", self.SFP),
-                     ("LOC", [self.SI5324])]:
-            for i, j in enumerate(k):
-                if j & ports:
-                    names.append("{}{}".format(p, i))
-        return ", ".join(names)
-
-    def test_speed(self):
-        t = self._time
-        t0 = time.monotonic()
-        for port in range(16):
-            if port in self.skip:
-                continue
-            self.select(port)
-            assert self.sw0.get() == (1 << port) & 0xff
-            assert self.sw1.get() == (1 << port) >> 8
-            for addr in self.scan():
-                pass
-        clock = (self._time - t)/2/(time.monotonic() - t0)
-        logger.info("I2C speed ~%s Hz", clock)
+    def names(self, paths):
+        rev = dict((v, k) for k, v in self.ports)
+        return ", ".join(rev[path] for path in paths)
 
     def scan_devices(self):
-        self.sw0.get()
-        self.sw1.get()
+        devs = [SinaraEEPROM(self, addr=0x57),
+                LM75(self), PCF8574(self, addr=0x3e),
+                Si5324(self), SFF8472(self)]
+        devs = {dev.addr: dev for dev in devs}
 
-        ee = EEPROM(self)
-        lm = LM75(self)
-        io = PCF8574(self, addr=0x3e)
-        si = Si5324(self)
-        sff = SFF8472(self)
-
-        for port in range(16):
-            logger.debug("Scanning port %i", port)
+        for port in sorted(self.ports):
+            logger.debug("Scanning port %s", port)
             if port in self.skip:
                 continue
-            self.select(port)
-            names = self.names(1 << port)
-            logger.info("%s: ...", names)
+            self.enable(port)
+            logger.info("%s: ...", port)
             for addr in self.scan():
-                if addr in (self.sw0.addr, self.sw1.addr):
-                    continue
-                if addr == ee.addr:
-                    ee.report()
-                    try:
-                        logger.info("Sinara: %s", Sinara.unpack(ee.dump()))
-                    except:
-                        logger.info("Sinara data invalid")
-                    if "SFP" in names:
-                        sff.report()
-                elif addr == lm.addr:
-                    lm.report()
-                elif addr == io.addr:
-                    io.report()
-                elif addr == si.addr:
-                    si.report()
+                if addr in devs:
+                    devs[addr].report()
                 else:
-                    logger.debug("%s: ignoring addr %#02x", names, addr)
+                    logger.debug("ignoring addr %#02x", addr)
 
     def dump_eeproms(self, **kwargs):
         ee = EEPROM(self, **kwargs)
-        for port in range(16):
-            logger.info("Scanning port %i", port)
+        for port in sorted(self.ports):
             if port in self.skip:
                 continue
-            self.select(port)
+            self.enable(port)
             if self.poll(ee.addr):
                 eui48 = ee.fmt_eui48()
-                logger.info("Port %i: found %s", port, eui48)
+                logger.info("Port %s: found %s", port, eui48)
                 open("data/{}.bin".format(eui48), "wb").write(ee.dump())
 
 
@@ -710,6 +733,8 @@ if __name__ == "__main__":
             for action in args.action:
                 if action == "speed":
                     bus.test_speed()
+                elif action == "scan_tree":
+                    logger.warning("%s", bus.make_graph(bus.scan_tree()))
                 elif action == "scan":
                     bus.scan_devices()
                 elif action == "dump_eeproms":
@@ -758,6 +783,7 @@ if __name__ == "__main__":
                     # logger.warning(hex(io.read()))
                 else:
                     raise ValueError("unknown action", action)
+            bus.enable()
             # would like to reattach the console port as pyftdi detaches all
             # interfaces indiscriminately. but since it also doesn't claim the
             # serial port interface, we can only release the i2c interface...
