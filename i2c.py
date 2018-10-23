@@ -496,19 +496,8 @@ class PCF8574:
 class SFF8472:
     def __init__(self, bus):
         self.bus = bus
-        self.addr = 0x50, 0x51
-
-    def read_many(self, addr, reg, length=1, ack=True):
-        with self.bus.xfer():
-            if not self.bus.write_data(addr << 1) and ack:
-                raise I2CNACK("Address Write NACK", addr)
-            if not self.bus.write_data(reg) and ack:
-                raise I2CNACK("Reg NACK", reg)
-            self.bus.restart()
-            if not self.bus.write_data((addr << 1) | 1) and ack:
-                raise I2CNACK("Address Read NACK", addr)
-            return bytes(self.bus.read_data(ack=i < length - 1)
-                    for i in range(length))
+        self.addr = 0x50
+        self.addr1 = 0x51
 
     def select_page(self, page):
         with self.bus.xfer():
@@ -518,27 +507,27 @@ class SFF8472:
 
     def dump(self):
         # self.select_page(0)
-        # c = self.bus.read_stream(self.addr[0], 256)
+        # c = self.bus.read_stream(self.addr, 256)
         # if c[92] & 0x04:
         #     self.select_page(1)
-        # d = self.bus.read_stream(self.addr[1], 256)
+        # d = self.bus.read_stream(self.addr1, 256)
         # if c[92] & 0x04:
         #     self.select_page(0)
-        c = self.read_many(self.addr[0], 0, 256, ack=False)
-        d = self.read_many(self.addr[1], 0, 256, ack=False)
+        c = self.bus.read_many(self.addr, 0, 256)
+        d = self.bus.read_many(self.addr1, 0, 256)
         return c, d
 
-    def print_dump(self):
-        for i in self.dump():
-            logger.warning("        " + " %2i"*16, *range(16))
-            logger.warning("        " + " %02x"*16, *range(16))
-            for j in range(16):
-                logger.warning("%3i, %2x:" + " %2x"*16, j*16, j*16,
-                        *i[j*16:(j + 1)*16])
+    def print_dump(self, dump):
+        logger.warning("        " + " %2i"*16, *range(16))
+        logger.warning("        " + " %02x"*16, *range(16))
+        for j in range(16):
+            logger.warning("%3i, %2x:" + " %2x"*16, j*16, j*16,
+                    *dump[j*16:(j + 1)*16])
 
     def watch(self, n=10):
-        self.print_dump()
         b = self.dump()
+        for i in b:
+            self.print_dump(i)
         for i in range(n):
             b, b0 = self.dump(), b
             for j, (c0, c) in enumerate(zip(b0, b)):
@@ -549,6 +538,9 @@ class SFF8472:
                                    "%#02x != %#02x", i, j, k, k, a0, a)
 
     def report(self):
+        if self.bus.read_many(self.addr, 63, 1) in b"\x00\xff":
+            logger.debug("invalid SFF CC_BASE, ignoring")
+            return
         c, d = self.dump()
         logger.info("SFF8472(SFP): vendor: %s, part: %s, serial: %s",
                 c[20:35].strip(), c[40:40+16].strip(), c[68:68+16].strip())
@@ -650,12 +642,7 @@ class Kasli(I2C):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def select(self, port):
-        assert port not in self.skip
-        self.enable(self.ports[port])
-
     def enable(self, *ports):
-        assert not any(port in self.skip for port in ports)
         bits = {0x70: 0, 0x71: 0}
         for port in ports:
             assert port not in self.skip
@@ -675,7 +662,6 @@ class Kasli(I2C):
         devs = {dev.addr: dev for dev in devs}
 
         for port in sorted(self.ports):
-            logger.debug("Scanning port %s", port)
             if port in self.skip:
                 continue
             self.enable(port)
@@ -702,11 +688,10 @@ if __name__ == "__main__":
     import argparse
 
     p = argparse.ArgumentParser()
-    p.add_argument("-i", "--index", default=0, type=int)
-    p.add_argument("-s", "--serial", default=None)
+    p.add_argument("-s", "--serial", default="0")
     p.add_argument("-p", "--port", default=2, type=int)
-    p.add_argument("-k", "--skip", action="append", default=[], type=int)
-    p.add_argument("-e", "--eem", default=None, type=int)
+    p.add_argument("-k", "--skip", action="append", default=[])
+    p.add_argument("-e", "--eem", default=None)
     p.add_argument("-v", "--verbose", default=0, action="count")
 
     p.add_argument("action", nargs="*")
@@ -715,11 +700,10 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=[logging.WARNING, logging.INFO, logging.DEBUG][args.verbose])
 
-    idx = args.serial if args.serial else args.index
     # port 2 for Kasli v1.1
     # port 3 for Kasli v1.0
     dev = Ftdi()
-    dev.open_bitbang_from_url("ftdi://ftdi:4232h:{}/{}".format(idx, args.port))
+    dev.open_bitbang_from_url("ftdi://ftdi:4232h:{}/{}".format(args.serial, args.port))
     try:
         bus = Kasli(dev)
         bus.skip = args.skip
@@ -740,7 +724,7 @@ if __name__ == "__main__":
                 elif action == "dump_eeproms":
                     bus.dump_eeproms()
                 elif action == "lm75":
-                    bus.enable(bus.EEM[args.eem])
+                    bus.enable(args.eem)
                     lm75 = LM75(bus)
                     lm75.report()
                 elif action == "si5324":
@@ -769,12 +753,14 @@ if __name__ == "__main__":
                     logger.warning("flags %s %s %s", si.has_xtal(),
                             si.has_clkin2(), si.locked())
                 elif action == "sfp":
-                    bus.enable(bus.SFP[args.eem])
+                    bus.enable(args.eem)
                     sfp0 = SFF8472(bus)
                     sfp0.report()
-                    sfp0.watch(n=0)
+                    #for i in 0x50, 0x51, 0x56:
+                    #    sfp0.print_dump(bus.read_many(i, 0, 256))
+                    #sfp0.watch(n=0)
                 elif action == "ee":
-                    bus.enable(bus.EEM[args.eem])
+                    bus.enable(args.eem)
                     ee = EEPROM(bus)
                     logger.warning(ee.fmt_eui48())
                     logger.warning(ee.dump())
