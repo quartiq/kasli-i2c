@@ -46,16 +46,8 @@ class Sinara(_SinaraTuple):
         "Novogorny",
         "Sampler",
         "Grabber",
-        "Clocker",
-        "Booster",
-        "BaseMod",
-        "MixMod",
-        "Baikal",
-        "Sayma Clock Mezzanine",
-        "Stamper",
-        "Shuttler",
-        "Thermostat",
         "Mirny",
+        "Banker",
         # ...
     ]
     vendors = [
