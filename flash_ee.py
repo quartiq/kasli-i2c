@@ -1,6 +1,8 @@
 import logging
 import sys
 
+from pyftdi.ftdi import Ftdi
+
 from sinara import Sinara
 from i2c import Kasli, EEPROM
 
@@ -20,26 +22,30 @@ if __name__ == "__main__":
         vendor=Sinara.vendors.index("Technosystem"),
         serial=serial.to_bytes(8, "big"))
 
-    bus = Kasli()
     ft_serial = "Kasli-v1.1-{}".format(serial)
-    bus.configure("ftdi://ftdi:4232h:{}/2".format(ft_serial))
-    with bus:
-        bus.reset()
-        # slot = 3
-        # bus.enable(bus.EEM[slot])
-        bus.enable(bus.SI5324)
-        ee = EEPROM(bus)
-        try:
-            logger.info("valid data %s", Sinara.unpack(ee.dump()))
-        except:
-            logger.info("invalid data")  # , exc_info=True)
-        eui48 = ee.eui48()
-        print(ee.fmt_eui48())
-        data = ee_data._replace(eui48=eui48)
-        ee.write(0, data.pack()[:128])
-        open("data/{}.bin".format(ee.fmt_eui48(eui48)), "wb").write(data.pack())
-        try:
-            logger.info("data readback valid %s", Sinara.unpack(ee.dump()))
-        except:
-            logger.error("data readback invalid", exc_info=True)
-    bus._ftdi.usb_dev.attach_kernel_driver(2)
+    dev = Ftdi()
+    dev.open_bitbang_from_url("ftdi://ftdi:4232h:{}/2".format(ft_serial))
+    try:
+        bus = Kasli(dev)
+        with bus:
+            #bus.reset()
+            # slot = 3
+            # bus.enable(bus.EEM[slot])
+            bus.enable("LOC0")
+            ee = EEPROM(bus)
+            try:
+                logger.info("valid data %s", Sinara.unpack(ee.dump()))
+            except:
+                logger.info("invalid data")  # , exc_info=True)
+            eui48 = ee.eui48()
+            print(ee.fmt_eui48())
+            data = ee_data._replace(eui48=eui48)
+            ee.write(0, data.pack()[:128])
+            open("data/{}.bin".format(ee.fmt_eui48(eui48)), "wb").write(data.pack())
+            try:
+                logger.info("data readback valid %s", Sinara.unpack(ee.dump()))
+            except:
+                logger.error("data readback invalid", exc_info=True)
+            bus.enable()
+    finally:
+        dev.close()
