@@ -48,6 +48,8 @@ class Sinara(_SinaraTuple):
         "Grabber",
         "Mirny",
         "Banker",
+        "Humpback",
+        "Stabilizer",
         # ...
     ]
     vendors = [
