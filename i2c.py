@@ -121,6 +121,7 @@ class I2C:
             self.tick()
 
     def start(self):
+        logger.debug("S")
         assert self.scl_i()
         if not self.sda_i():
             raise ValueError("Arbitration lost")
@@ -130,6 +131,7 @@ class I2C:
         # SCL low, SDA low
 
     def stop(self):
+        logger.debug("P")
         # SCL low, SDA low
         self.tick()
         self.scl_oe(False)
@@ -141,6 +143,7 @@ class I2C:
             raise ValueError("Arbitration lost")
 
     def restart(self):
+        logger.debug("R")
         # SCL low, SDA low
         self.sda_oe(False)
         self.tick()
@@ -168,6 +171,7 @@ class I2C:
         self.scl_oe(True)
         self.sda_oe(True)
         # SCL low, SDA low
+        logger.debug("W %#02x %s", data, "A" if ack else "N")
         return ack
 
     def read_data(self, ack=True):
@@ -190,13 +194,16 @@ class I2C:
         self.scl_oe(True)
         self.sda_oe(True)
         # SCL low, SDA low
+        logger.debug("R %#02x %s", data, "A" if ack else "N")
         return data
 
     @contextmanager
     def xfer(self):
         self.start()
-        yield
-        self.stop()
+        try:
+            yield
+        finally:
+            self.stop()
 
     def write_single(self, addr, data, ack=True):
         with self.xfer():
