@@ -308,6 +308,14 @@ class PCA9548:
     def report(self):
         logger.info("PCA9548(switch): %#04x", self.get())
 
+    @contextmanager
+    def enabled(self, ports):
+        self.set(ports)
+        try:
+            yield
+        finally:
+            self.set(0)
+
 
 class Si5324:
     class FrequencySettings:
@@ -657,6 +665,14 @@ class Kasli(I2C):
                 bits[addr] |= (1 << p)
         for addr in sorted(bits):
             self.write_single(addr, bits[addr])
+
+    @contextmanager
+    def enabled(self, *ports):
+        self.enable(*ports)
+        try:
+            yield self
+        finally:
+            self.enable()
 
     def names(self, paths):
         rev = dict((v, k) for k, v in self.ports)
