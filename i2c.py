@@ -623,6 +623,120 @@ class LM75:
                     self.get_hysteresis(), self.get_shutdown())
 
 
+class SPI:
+    """I2C to SPI converter, SC18IS602B"""
+    def __init__(self, bus, addr=0x40):
+        self.bus = bus
+        self.addr = addr
+        self.max_xfer = 200
+
+    def poll(self, timeout=.1):
+        t = time.monotonic()
+        while not self.clear_interrupt():
+            if time.monotonic() - t > timeout:
+                raise ValueError("poll timeout")
+        logger.debug("polling took %g s", time.monotonic() - t)
+
+    def spi_write(self, ss, data, read=False):
+        assert len(data) <= self.max_xfer
+        self.bus.write_many(self.addr, ss, data)
+
+    def buffer_read(self, length):
+        return self.bus.read_stream(self.addr, length)
+
+    def configure(self, order=0, mode=0, f=0):
+        self.bus.write_many(self.addr, 0xf0, [(order << 5) | (mode << 2) | f])
+
+    def clear_interrupt(self):
+        try:
+            self.bus.write_single(self.addr, 0xf1)
+            return True
+        except I2CNACK:
+            return False
+
+    def idle(self):
+        self.bus.write_single(self.addr, 0xf2)
+
+    def gpio_write(self, gpio):
+        self.bus.write_many(self.addr, 0xf4, [gpio])
+
+    def gpio_read(self):
+        self.bus.write_many(self.addr, 0xf5, [0])
+        return self.buffer_read(1)[0]
+
+    def gpio_enable(self, gpio):
+        self.bus.write_many(self.addr, 0xf6, [gpio])
+
+    def gpio_config(self, *ss):
+        """quasi-bidir, push-pull, input, open-drain"""
+        cfg = sum((ssi << (2*i) for i, ssi in enumerate(ss)), 0)
+        self.bus.write_many(self.addr, 0xf7, [cfg])
+
+
+class SPIFlash:
+    def __init__(self, bus, ss, sector=0x10000):
+        self.ss = ss  # slave select bit mask
+        self.bus = bus
+        self.sector = sector
+
+    def xfer(self, data, read=False):
+        self.bus.spi_write(self.ss, data)
+        self.bus.poll()
+        if read:
+            return self.bus.buffer_read(len(data))
+
+    def cmd(self, cmd, offset=0):
+        return bytes([cmd, offset >> 16, (offset >> 8) & 0xff, offset & 0xff])
+
+    def read_identification(self):
+        return self.xfer(self.cmd(0x9f), read=True)[1:]
+
+    def read_status(self):
+        return self.xfer([0x05, 0xff], read=True)[1]
+
+    def write_enable(self):
+        self.xfer([0x06])
+        assert self.read_status() & 2  # WE
+
+    def write_disable(self):
+        self.xfer([0x04])
+        assert not self.read_status() & 2  # WE
+
+    def poll(self, timeout=4.):
+        t = time.monotonic()
+        while self.read_status() & 1:  # write in progress
+            if time.monotonic() - t > timeout:
+                raise ValueError("write timeout")
+        logger.info("write took %g s", time.monotonic() - t)
+
+    def read_data_bytes(self, offset, length):
+        return self.xfer(self.cmd(0x03, offset) + bytes(length), read=True)[4:]
+
+    def sector_erase(self, offset):
+        self.xfer(self.cmd(0xd8, offset))
+        self.poll()
+
+    def page_program(self, offset, data):
+        self.xfer(self.cmd(0x02, offset) + data)
+        self.poll()
+
+    def flash(self, offset, data):
+        n = 128  # self.bus.max_xfer - 4 will cross page boundary
+        assert offset & (self.sector - 1) == 0
+        for addr in range(0, len(data), n):
+            if not addr & (self.sector - 1):
+                self.write_enable()
+                self.sector_erase(addr + offset)
+            write = data[addr:addr + n]
+            self.write_enable()
+            self.page_program(addr + offset, write)
+            read = self.read_data_bytes(addr + offset, len(write))
+            if write != read:
+                raise RuntimeError("verify failed at %#06x: "
+                                   "write %r != read %r",
+                                    hex(addr + offset), write, read)
+
+
 class SinaraEEPROM(EEPROM):
     def report(self):
         super().report()
