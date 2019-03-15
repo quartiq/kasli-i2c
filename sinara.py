@@ -22,9 +22,9 @@ _SinaraTuple = namedtuple("Sinara", (
 class Sinara(_SinaraTuple):
     _defaults = _SinaraTuple(name="Unknown", id=0, data_rev=0,
                              major=0, minor=0, variant=0, port=0, vendor=0,
-                             serial=b"\x00"*8, project_data=b"\x00"*16,
-                             user_data=b"\x00"*16, board_data=b"\x00"*64,
-                             eui48=b"\x00"*6)
+                             serial=b"\xff"*8, project_data=b"\xff"*16,
+                             user_data=b"\xff"*16, board_data=b"\xff"*64,
+                             eui48=b"\xff"*6)
     _struct = struct.Struct(">I H 10s HBBBBBB 8s 16s 16s 64s 122s 6s")
     assert _struct.size == 256
     _magic = 0x391e
