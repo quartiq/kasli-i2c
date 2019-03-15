@@ -65,9 +65,9 @@ class Banker:
             self.spi.gpio_write(0b1000)
             self.spi.idle()
 
-    def dump(self, fil, length=0x22000):
+    def dump(self, fil, length=0x22000, offset=0):
         with open(fil, "wb") as fil:
-            for i in range(0, length, 196):
+            for i in range(offset, offset + length, 196):
                 logger.info("read %s/%s", i, length)
                 fil.write(self.flash.read_data_bytes(i, 196))
 
