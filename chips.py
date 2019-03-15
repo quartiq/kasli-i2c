@@ -1,258 +1,16 @@
-from contextlib import contextmanager
-import logging
 import time
+import logging
+from contextlib import contextmanager
 import struct
 
-from pyftdi.ftdi import Ftdi
 from sinara import Sinara
-
 
 logger = logging.getLogger(__name__)
 
 
-class I2C:
-    SCL = 1 << 0
-    SDAO = 1 << 1
-    SDAI = 1 << 2
-    EN = 1 << 4
-    RESET_B = 1 << 5
-    max_clock_stretch = 100
-
-    def __init__(self, dev):
-        self.dev = dev
-        self._time = 0
-        self._direction = 0
-
-    def tick(self):
-        self._time += 1
-
-    def reset_switch(self):
-        self.write(self.EN)
-        self.tick()
-        self.write(self.EN | self.RESET_B)
-        self.tick()
-        time.sleep(.01)
-
-    def set_direction(self, direction):
-        self._direction = direction
-        self.dev.set_bitmode(direction, Ftdi.BITMODE_BITBANG)
-
-    def write(self, data):
-        self.dev.write_data(bytes([data]))
-
-    def read(self):
-        return self.dev.read_pins()
-
-    def scl_oe(self, oe):
-        d = (self._direction & ~self.SCL)
-        if oe:
-            d |= self.SCL
-        self.set_direction(d)
-
-    def sda_oe(self, oe):
-        d = self._direction & ~self.SDAO
-        if oe:
-            d |= self.SDAO
-        self.set_direction(d)
-
-    def scl_i(self):
-        return bool(self.read() & self.SCL)
-
-    def sda_i(self):
-        return bool(self.read() & self.SDAI)
-
-    def clock_stretch(self):
-        for i in range(self.max_clock_stretch):
-            r = self.read()
-            if r & self.SCL:
-                return bool(r & self.SDAI)
-        raise ValueError("SCL low exceeded clock stretch limit")
-
-    def acquire(self):
-        self.write(self.EN | self.RESET_B)  # RESET_B, EN, !SCL, !SDA
-        self.set_direction(self.EN | self.RESET_B)  # enable USB-I2C
-        self.tick()
-        # self.reset_switch()
-        time.sleep(.1)
-        i = self.read()
-        if not i & self.EN:
-            raise ValueError("EN low despite enable")
-        if not i & self.SCL:
-            raise ValueError("SCL stuck low")
-        if not i & self.SDAI:
-            raise ValueError("SDAI stuck low")
-        if not i & self.SDAO:
-            raise ValueError("SDAO stuck low")
-
-    def release(self):
-        # self.reset_switch()
-        self.set_direction(self.EN | self.RESET_B)
-        self.write(self.RESET_B)
-        self.tick()
-        i = self.read()
-        if i & self.EN:
-            raise ValueError("EN high despite disable")
-        if not i & self.SCL:
-            raise ValueError("SCL low despite disable")
-        if not i & self.SDAI:
-            raise ValueError("SDAI low despite disable")
-        if not i & self.SDAO:
-            raise ValueError("SDAO low despite disable")
-
-    def __enter__(self):
-        self.acquire()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.release()
-
-    def clear(self):
-        self.tick()
-        self.scl_oe(False)
-        self.tick()
-        self.sda_oe(False)
-        self.tick()
-        for i in range(9):
-            if self.clock_stretch():
-                break
-            self.scl_oe(True)
-            self.tick()
-            self.scl_oe(False)
-            self.tick()
-
-    def start(self):
-        logger.debug("S")
-        assert self.scl_i()
-        if not self.sda_i():
-            raise ValueError("Arbitration lost")
-        self.sda_oe(True)
-        self.tick()
-        self.scl_oe(True)
-        # SCL low, SDA low
-
-    def stop(self):
-        logger.debug("P")
-        # SCL low, SDA low
-        self.tick()
-        self.scl_oe(False)
-        self.tick()
-        self.clock_stretch()
-        self.sda_oe(False)
-        self.tick()
-        if not self.sda_i():
-            raise ValueError("Arbitration lost")
-
-    def restart(self):
-        logger.debug("R")
-        # SCL low, SDA low
-        self.sda_oe(False)
-        self.tick()
-        self.scl_oe(False)
-        self.tick()
-        assert self.clock_stretch()
-        self.start()
-
-    def write_data(self, data):
-        for i in range(8):
-            bit = bool(data & (1 << 7 - i))
-            self.sda_oe(not bit)
-            self.tick()
-            self.scl_oe(False)
-            self.tick()
-            if self.clock_stretch() != bit:
-                raise ValueError("Arbitration lost")
-            self.scl_oe(True)
-        # check ACK
-        self.sda_oe(False)
-        self.tick()
-        self.scl_oe(False)
-        self.tick()
-        ack = not self.clock_stretch()
-        self.scl_oe(True)
-        self.sda_oe(True)
-        # SCL low, SDA low
-        logger.debug("W %#02x %s", data, "A" if ack else "N")
-        return ack
-
-    def read_data(self, ack=True):
-        self.sda_oe(False)
-        data = 0
-        for i in range(8):
-            self.tick()
-            self.scl_oe(False)
-            self.tick()
-            if self.clock_stretch():
-                data |= 1 << 7 - i
-            self.scl_oe(True)
-        # send ACK
-        self.sda_oe(ack)
-        self.tick()
-        self.scl_oe(False)
-        self.tick()
-        if self.clock_stretch() == ack:
-            raise ValueError("Arbitration lost")
-        self.scl_oe(True)
-        self.sda_oe(True)
-        # SCL low, SDA low
-        logger.debug("R %#02x %s", data, "A" if ack else "N")
-        return data
-
-    @contextmanager
-    def xfer(self):
-        self.start()
-        try:
-            yield
-        finally:
-            self.stop()
-
-    def write_single(self, addr, data, ack=True):
-        with self.xfer():
-            if not self.write_data(addr << 1):
-                raise I2CNACK("Address Write NACK", addr)
-            if not self.write_data(data) and ack:
-                raise I2CNACK("Data NACK", addr, data)
-
-    def read_single(self, addr):
-        with self.xfer():
-            if not self.write_data((addr << 1) | 1):
-                raise I2CNACK("Address Read NACK", addr)
-            return self.read_data(ack=False)
-
-    def write_many(self, addr, reg, data, ack=True):
-        with self.xfer():
-            if not self.write_data(addr << 1):
-                raise I2CNACK("Address Write NACK", addr)
-            if not self.write_data(reg):
-                raise I2CNACK("Reg NACK", reg)
-            for i, byte in enumerate(data):
-                if not self.write_data(byte) and (ack or i < len(data) - 1):
-                    raise I2CNACK("Data NACK", data)
-
-    def read_many(self, addr, reg, length=1):
-        with self.xfer():
-            if not self.write_data(addr << 1):
-                raise I2CNACK("Address Write NACK", addr)
-            if not self.write_data(reg):
-                raise I2CNACK("Reg NACK", reg)
-            self.restart()
-            if not self.write_data((addr << 1) | 1):
-                raise I2CNACK("Address Read NACK", addr)
-            return bytes(self.read_data(ack=i < length - 1)
-                         for i in range(length))
-
-    def read_stream(self, addr, length=1):
-        with self.xfer():
-            if not self.write_data((addr << 1) | 1):
-                raise I2CNACK("Address Read NACK", addr)
-            return bytes(self.read_data(ack=i < length - 1)
-                         for i in range(length))
-
-    def poll(self, addr):
-        with self.xfer():
-            return self.write_data(addr << 1)
-
+class ScanI2C:
     def scan(self, addrs=None):
-        for addr in addrs or range(1 << 7):
+        for addr in addrs or range(0x08, 0x78):
             if self.poll(addr):
                 yield addr
 
@@ -260,12 +18,14 @@ class I2C:
         found = [addr for addr in self.scan(addrs) if addr not in skip]
         for addr in found:
             if (addr ^ addr_mask[0]) & addr_mask[1]:
+                # leaf, not switch
                 yield [], addr
                 continue
+            # scan each switch port
             for port in range(8):
                 self.write_single(addr, 1 << port)
                 for path, sub in self.scan_tree(
-                    addr_mask, addrs, skip + found):
+                        addr_mask, addrs, skip + found):
                     yield [(addr, port)] + path, sub
             self.write_single(addr, 0)
 
@@ -280,18 +40,7 @@ class I2C:
             scope[addr] = None
         return root
 
-    def test_speed(self):
-        t = self._time
-        t0 = time.monotonic()
-        for _ in self.scan_tree():
-            pass
-        clock = (self._time - t)/2/(time.monotonic() - t0)
-        logger.info("I2C speed ~%s Hz", clock)
-        return clock
 
-
-class I2CNACK(Exception):
-    pass
 
 
 class PCA9548:
@@ -401,7 +150,7 @@ class Si5324:
 
         # try:
         #     self.write(136, 0x80)  # RST_REG
-        # except I2CNACK:
+        # except I2cNackError:
         #     pass
         # time.sleep(.01)
         self.write(136, 0x00)
@@ -465,7 +214,7 @@ class EEPROM:
 
     def poll(self, timeout=1.):
         t = time.monotonic()
-        while not self.bus.poll(self.addr):
+        while not self.bus.poll(self.addr, write=True):
             if time.monotonic() - t > timeout:
                 raise ValueError("poll timeout")
         logger.debug("polling took %g s", time.monotonic() - t)
@@ -485,7 +234,7 @@ class EEPROM:
         assert addr & (self.pagesize - 1) == 0
         for i in range(0, len(data), self.pagesize):
             self.bus.write_many(self.addr, addr + i,
-                    data[i:i + self.pagesize], ack=False)
+                    data[i:i + self.pagesize])
             self.poll()
 
     def report(self):
@@ -514,20 +263,7 @@ class SFF8472:
         self.addr = 0x50
         self.addr1 = 0x51
 
-    def select_page(self, page):
-        with self.bus.xfer():
-            for val in [0x00, 0x04, 0x02*page]:
-                if not self.bus.write_data(val):
-                    raise I2CNACK("NACK", val)
-
     def dump(self):
-        # self.select_page(0)
-        # c = self.bus.read_stream(self.addr, 256)
-        # if c[92] & 0x04:
-        #     self.select_page(1)
-        # d = self.bus.read_stream(self.addr1, 256)
-        # if c[92] & 0x04:
-        #     self.select_page(0)
         c = self.bus.read_many(self.addr, 0, 256)
         d = self.bus.read_many(self.addr1, 0, 256)
         return c, d
@@ -628,7 +364,7 @@ class SPI:
     def __init__(self, bus, addr=0x40):
         self.bus = bus
         self.addr = addr
-        self.max_xfer = 200
+        self.max_buffer = 200
 
     def poll(self, timeout=.1):
         t = time.monotonic()
@@ -638,7 +374,7 @@ class SPI:
         logger.debug("polling took %g s", time.monotonic() - t)
 
     def spi_write(self, ss, data, read=False):
-        assert len(data) <= self.max_xfer
+        assert len(data) <= self.max_buffer
         self.bus.write_many(self.addr, ss, data)
 
     def buffer_read(self, length):
@@ -651,7 +387,7 @@ class SPI:
         try:
             self.bus.write_single(self.addr, 0xf1)
             return True
-        except I2CNACK:
+        except I2cNackError:
             return False
 
     def idle(self):
@@ -721,20 +457,20 @@ class SPIFlash:
         self.poll()
 
     def flash(self, offset, data):
-        n = 128  # self.bus.max_xfer - 4 will cross page boundary
+        n = 128  # self.bus.max_buffer - 4 will cross page boundary
         assert offset & (self.sector - 1) == 0
-        for addr in range(0, len(data), n):
+        for addr in range(offset, offset + len(data), n):
             if not addr & (self.sector - 1):
                 self.write_enable()
-                self.sector_erase(addr + offset)
-            write = data[addr:addr + n]
+                self.sector_erase(addr)
+            write = data[addr - offset:addr - offset + n]
             self.write_enable()
-            self.page_program(addr + offset, write)
-            read = self.read_data_bytes(addr + offset, len(write))
+            self.page_program(addr, write)
+            read = self.read_data_bytes(addr, len(write))
             if write != read:
                 raise RuntimeError("verify failed at %#06x: "
                                    "write %r != read %r",
-                                    hex(addr + offset), write, read)
+                                    hex(addr), write, read)
 
 
 class SinaraEEPROM(EEPROM):
@@ -746,170 +482,3 @@ class SinaraEEPROM(EEPROM):
             logger.info("Sinara data invalid")
 
 
-class Kasli(I2C):
-    ports = {
-        "ROOT": [],
-        "EEM0": [(0x70, 7)],
-        "EEM1": [(0x70, 5)],
-        "EEM2": [(0x70, 4)],
-        "EEM3": [(0x70, 3)],
-        "EEM4": [(0x70, 2)],
-        "EEM5": [(0x70, 1)],
-        "EEM6": [(0x70, 0)],
-        "EEM7": [(0x70, 6)],
-        "EEM8": [(0x71, 4)],
-        "EEM9": [(0x71, 5)],
-        "EEM10": [(0x71, 7)],
-        "EEM11": [(0x71, 6)],
-        "SFP0": [(0x71, 0)],
-        "SFP1": [(0x71, 1)],
-        "SFP2": [(0x71, 2)],
-        "LOC0": [(0x71, 3)],
-    }
-    skip = []
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def enable(self, *ports):
-        bits = {0x70: 0, 0x71: 0}
-        for port in ports:
-            assert port not in self.skip
-            for addr, p in self.ports[port]:
-                bits[addr] |= (1 << p)
-        for addr in sorted(bits):
-            self.write_single(addr, bits[addr])
-
-    @contextmanager
-    def enabled(self, *ports):
-        self.enable(*ports)
-        try:
-            yield self
-        finally:
-            self.enable()
-
-    def names(self, paths):
-        rev = dict((v, k) for k, v in self.ports)
-        return ", ".join(rev[path] for path in paths)
-
-    def scan_devices(self):
-        devs = [SinaraEEPROM(self, addr=0x57),
-                LM75(self), PCF8574(self, addr=0x3e),
-                Si5324(self), SFF8472(self)]
-        devs = {dev.addr: dev for dev in devs}
-
-        for port in sorted(self.ports):
-            if port in self.skip:
-                continue
-            self.enable(port)
-            logger.info("%s: ...", port)
-            for addr in self.scan():
-                if addr in devs:
-                    devs[addr].report()
-                else:
-                    logger.debug("ignoring addr %#02x", addr)
-
-    def dump_eeproms(self, **kwargs):
-        ee = EEPROM(self, **kwargs)
-        for port in sorted(self.ports):
-            if port in self.skip:
-                continue
-            self.enable(port)
-            if self.poll(ee.addr):
-                eui48 = ee.fmt_eui48()
-                logger.info("Port %s: found %s", port, eui48)
-                open("data/{}.bin".format(eui48), "wb").write(ee.dump())
-
-
-if __name__ == "__main__":
-    import argparse
-
-    p = argparse.ArgumentParser()
-    p.add_argument("-s", "--serial", default="0")
-    p.add_argument("-p", "--port", default=2, type=int)
-    p.add_argument("-k", "--skip", action="append", default=[])
-    p.add_argument("-e", "--eem", default=None)
-    p.add_argument("-v", "--verbose", default=0, action="count")
-
-    p.add_argument("action", nargs="*")
-    args = p.parse_args()
-
-    logging.basicConfig(
-        level=[logging.WARNING, logging.INFO, logging.DEBUG][args.verbose])
-
-    # port 2 for Kasli v1.1
-    # port 3 for Kasli v1.0
-    dev = Ftdi()
-    dev.open_bitbang_from_url("ftdi://ftdi:4232h:{}/{}".format(args.serial, args.port))
-    try:
-        bus = Kasli(dev)
-        bus.skip = args.skip
-        # EEM1 (port 5) SDA shorted on Kasli-v1.0-2
-
-        if not args.action:
-            args.action.extend(["scan"])
-
-        with bus:
-            bus.clear()
-            for action in args.action:
-                if action == "speed":
-                    bus.test_speed()
-                elif action == "scan_tree":
-                    logger.warning("%s", bus.make_graph(bus.scan_tree()))
-                elif action == "scan":
-                    bus.scan_devices()
-                elif action == "dump_eeproms":
-                    bus.dump_eeproms()
-                elif action == "lm75":
-                    bus.enable(args.eem)
-                    lm75 = LM75(bus)
-                    lm75.report()
-                elif action == "si5324":
-                    bus.enable(bus.SI5324)
-                    si = Si5324(bus)
-                    s = Si5324.FrequencySettings()
-                    if True:
-                        s.n31 = 4993  # 100 MHz CKIN1
-                        s.n32 = 4565  # 114.285 MHz CKIN2 XTAL
-                        s.n1_hs = 10
-                        s.nc1_ls = 4
-                        s.nc2_ls = 4
-                        s.n2_hs = 10
-                        s.n2_ls = 19972  # 125MHz CKOUT
-                        s.bwsel = 4
-                    else:
-                        s.n31 = 65  # 125 MHz CKIN1
-                        s.n32 = 52  # 100 MHz CKIN2 (not free run)
-                        s.n1_hs = 10
-                        s.nc1_ls = 4
-                        s.nc2_ls = 4
-                        s.n2_hs = 10
-                        s.n2_ls = 260  # 125MHz CKOUT
-                        s.bwsel = 10
-                    si.setup(s)
-                    logger.warning("flags %s %s %s", si.has_xtal(),
-                            si.has_clkin2(), si.locked())
-                elif action == "sfp":
-                    bus.enable(args.eem)
-                    sfp0 = SFF8472(bus)
-                    sfp0.report()
-                    #for i in 0x50, 0x51, 0x56:
-                    #    sfp0.print_dump(bus.read_many(i, 0, 256))
-                    #sfp0.watch(n=0)
-                elif action == "ee":
-                    bus.enable(args.eem)
-                    ee = EEPROM(bus)
-                    logger.warning(ee.fmt_eui48())
-                    logger.warning(ee.dump())
-                    io = PCF8574(bus, addr=0x3e)
-                    # io.write(0xff)
-                    # logger.warning(hex(io.read()))
-                else:
-                    raise ValueError("unknown action", action)
-            bus.enable()
-            # would like to reattach the console port as pyftdi detaches all
-            # interfaces indiscriminately. but since it also doesn't claim the
-            # serial port interface, we can only release the i2c interface...
-            #dev.usb_dev.attach_kernel_driver(2)
-    finally:
-        dev.close()

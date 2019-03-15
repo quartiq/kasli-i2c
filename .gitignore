@@ -1,0 +1,5 @@
+*.bin
+/data/*
+!/data/.keep_me
+/log/*
+!/log/.keep_me

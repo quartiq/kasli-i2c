@@ -10,7 +10,7 @@ FT_SERIAL=Kasli-v1.1-$SERIAL
 
 IP=10.0.16.1$SERIAL
 FT_BUS=1
-FT_PORT=4
+FT_PORT=7
 UART_DEV=/dev/serial/by-id/usb-ARTIQ_Sinara_Quad_RS232-HS_$FT_SERIAL-if02-port0
 BUSNUM=$(cat /sys/bus/usb/devices/$FT_BUS-$FT_PORT/busnum)
 DEVNUM=$(cat /sys/bus/usb/devices/$FT_BUS-$FT_PORT/devnum)

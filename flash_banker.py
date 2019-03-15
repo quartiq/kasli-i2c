@@ -3,11 +3,9 @@ import sys
 import time
 from contextlib import contextmanager
 
-from pyftdi.ftdi import Ftdi
-
 from sinara import Sinara
-from i2c import Kasli, EEPROM, PCA9548, LM75, SPI, SPIFlash
-
+from kasli import Kasli
+import chips
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +13,12 @@ logger = logging.getLogger(__name__)
 class Banker:
     def __init__(self, bus):
         self.bus = bus
-        self.sw = PCA9548(bus, addr=0x72)
-        self.eeprom = EEPROM(bus)
-        self.temp1 = LM75(bus, 0x48)
-        self.temp2 = LM75(bus, 0x49)
-        self.spi = SPI(bus, 0x2a)
-        self.flash = SPIFlash(self.spi, 0b0001)
+        self.sw = chips.PCA9548(bus, addr=0x72)
+        self.eeprom = chips.EEPROM(bus)
+        self.temp1 = chips.LM75(bus, 0x48)
+        self.temp2 = chips.LM75(bus, 0x49)
+        self.spi = chips.SPI(bus, 0x2a)
+        self.flash = chips.SPIFlash(self.spi, 0b0001)
 
     def init(self):
         self.spi.gpio_write(0b1000)
@@ -32,7 +30,11 @@ class Banker:
         self.spi.configure(order=0, mode=0, f=0)
 
     def report(self):
-        logger.info("eeprom %r", self.eeprom.dump())
+        ee = self.eeprom.dump()
+        try:
+            logger.info("Sinara eeprom valid %s", Sinara.unpack(ee))
+        except:
+            logger.error("eeprom data invalid %r", ee, exc_info=True)
         self.temp1.report()
         self.temp2.report()
         logging.info("gpio: %#02x", self.spi.gpio_read())
@@ -96,23 +98,19 @@ if __name__ == "__main__":
     logger.info("serial: %s", serial)
 
     ft_serial = "Kasli-v1.1-{}".format(serial)
-    dev = Ftdi()
-    dev.open_bitbang_from_url("ftdi://ftdi:4232h:{}/2".format(ft_serial))
-    try:
-        with Kasli(dev) as bus, bus.enabled(sys.argv[2]):
-            b = Banker(bus)
-            with b.sw.enabled(0b101):
-                b.init()
-                action = sys.argv[3]
-                if action == "eeprom":
-                    b.eeprom_update(serial=int(sys.argv[4]).to_bytes(8, "big"))
-                with b.flash_upd():
-                    b.report()
-                    if action == "read":
-                        b.dump(sys.argv[4])
-                    elif action == "write":
-                        with open(sys.argv[4], "rb") as fil:
-                            b.flash.flash(0, fil.read())
-                b.creload()
-    finally:
-        dev.close()
+    url = "ftdi://ftdi:4232h:{}/2".format(ft_serial)
+    with Kasli().configure(url) as bus, bus.enabled(sys.argv[2]):
+        b = Banker(bus)
+        with b.sw.enabled(0b101):
+            b.init()
+            action = sys.argv[3]
+            if action == "eeprom":
+                b.eeprom_update(serial=int(sys.argv[4]).to_bytes(8, "big"))
+            with b.flash_upd():
+                b.report()
+                if action == "read":
+                    b.dump(sys.argv[4])
+                elif action == "write":
+                    with open(sys.argv[4], "rb") as fil:
+                        b.flash.flash(0, fil.read())
+            b.creload()
