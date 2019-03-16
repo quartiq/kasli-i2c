@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ScanI2C:
     def scan(self, addrs=None):
         for addr in addrs or range(0x08, 0x78):
-            if self.poll(addr):
+            if self.poll(addr, write=True):
                 yield addr
 
     def scan_tree(self, addr_mask=(0x70, 0x78), addrs=None, skip=[]):
