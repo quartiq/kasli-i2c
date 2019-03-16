@@ -443,7 +443,7 @@ class SPIFlash:
         while self.read_status() & 1:  # write in progress
             if time.monotonic() - t > timeout:
                 raise ValueError("write timeout")
-        logger.info("write took %g s", time.monotonic() - t)
+        logger.debug("write took %g s", time.monotonic() - t)
 
     def read_data_bytes(self, offset, length):
         return self.xfer(self.cmd(0x03, offset) + bytes(length), read=True)[4:]
@@ -467,6 +467,7 @@ class SPIFlash:
             self.write_enable()
             self.page_program(addr, write)
             read = self.read_data_bytes(addr, len(write))
+            logger.info("%#06x / %#06x", addr, offset + len(data))
             if write != read:
                 raise RuntimeError("verify failed at %#06x: "
                                    "write %r != read %r",
