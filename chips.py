@@ -52,7 +52,7 @@ class PCA9548:
         self.bus.write_single(self.addr, ports)
 
     def get(self):
-        return self.bus.read_single(self.addr)
+        return self.bus.read_single(self.addr)[0]
 
     def report(self):
         logger.info("PCA9548(switch): %#04x", self.get())
@@ -251,7 +251,7 @@ class PCF8574:
         self.bus.write_single(self.addr, data)
 
     def read(self):
-        return self.bus.read_single(self.addr)
+        return self.bus.read_single(self.addr)[0]
 
     def report(self):
         logger.info("PCF8574(IO): %#04x", self.read())
