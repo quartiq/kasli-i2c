@@ -12,8 +12,8 @@ max_power=150  # mA
 use_serial=true
 eeprom_type=0x00  # 128 byte
 cha_vcp=false  # JTAG
-chb_vcp=true   # UART
-chc_vcp=false  # I2C
+chb_vcp=false  # I2C
+chc_vcp=true   # UART
 chd_vcp=false  # GPIO
 
 manufacturer="ARTIQ/Sinara"
