@@ -40,7 +40,14 @@ class ScanI2C:
             scope[addr] = None
         return root
 
-
+    def format_graph(self, root, level=0, indent=4):
+        for k in root:
+            yield " "*level + "─ {:#04x}".format(k)
+            if root[k] is None:
+                continue
+            for port, children in enumerate(root[k]):
+                yield " "*level + "└ {}".format(port)
+                yield from self.format_graph(children, level + indent, indent)
 
 
 class PCA9548:

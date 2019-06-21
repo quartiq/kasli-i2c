@@ -9,7 +9,7 @@ import chips
 logger = logging.getLogger(__name__)
 
 
-class Kasli(I2C, chips.ScanI2C):
+class Kasli(I2CBB, chips.ScanI2C):
     ports = {
         "ROOT": [],
         "EEM0": [(0x70, 7)],
@@ -113,6 +113,7 @@ if __name__ == "__main__":
                     t = list(bus.scan_tree())
                     logger.warning("%s", t)
                     logger.warning("%s", bus.make_graph(t))
+                    logger.warning("\n" + "\n".join(bus.format_graph(bus.make_graph(t))))
                 elif action == "scan":
                     bus.scan_devices()
                 elif action == "dump_eeproms":
