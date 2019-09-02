@@ -50,11 +50,11 @@ class Sinara(_SinaraTuple):
         "Banker",
         "Humpback",
         "Stabilizer",
-        "Kasli-BP",
+        "Kasli_BP",
         # ...
     ]
-    board_descriptions = {
-        "Kasli": "8/12 EEM FPGA",
+    descriptions = {
+        "Kasli": "8/12 EEM A7 FPGA",
         "DIO_BNC": "8x iso BNC IO",
         "DIO_SMA": "8x iso SMA IO",
         "DIO_RJ45": "16x LVDS RJ45 IO",
@@ -67,9 +67,9 @@ class Sinara(_SinaraTuple):
         "Banker": "128x IO+FPGA",
         "Humpback": "uC+FPGA carrier",
         "Stabilizer": "2x 16b ADC+DAC+uC",
-        "Kasli_BP": "Kasli backplane adapter",
+        "Kasli_BP": "Backplane adapter",
     }
-    board_variants = {
+    variants = {
         "Urukul": ["AD9910", "AD9912"],
         }
 
@@ -80,9 +80,9 @@ class Sinara(_SinaraTuple):
         "QUARTIQ",
         # ...
     ]
-    vendor_description = {
-        "QUARTIQ": "QUARTIQ GmbH\nRudower Chaussee 29\n12489 Berlin, Germany",
-    }
+
+    licenses = {None: "CERN OHL v1.2"}
+    url = "https://sinara-hw.github.io"
 
     def pack(self):
         name = self[0].encode()
@@ -107,6 +107,10 @@ class Sinara(_SinaraTuple):
         fields[0] = fields[0].strip(b"\x00").decode()
         return cls(*fields, eui48)
 
+    @property
+    def eui48_fmt(self):
+        return "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}-{:02x}".format(*self.eui48)
+
 
 Sinara.__new__.__defaults__ = Sinara._defaults
 
@@ -114,7 +118,7 @@ Sinara.__new__.__defaults__ = Sinara._defaults
 if __name__ == "__main__":
     s = Sinara(name="DIO-BNC",
                board=Sinara.boards.index("DIO-BNC"),
-               data_rev=Sinara.data_rev, major=1, minor=1, variant=0, port=0,
+               data_rev=0, major=1, minor=1, variant=0, port=0,
                vendor=Sinara.vendors.index("Technosystem"))
     print(s)
     print(s.pack())
