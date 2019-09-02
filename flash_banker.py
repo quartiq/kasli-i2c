@@ -76,10 +76,10 @@ class Banker:
         logger.info("eui48 %s", self.eeprom.fmt_eui48())
         ee_data = Sinara(
             name="Banker",
-            id=Sinara.ids.index("Banker"),
+            board=Sinara.boards.index("Banker"),
             data_rev=0, major=1, minor=0, variant=0, port=0,
             vendor=Sinara.vendors.index("Technosystem"),
-            serial=(0).to_bytes(8, "big"))
+            vendor_data=(0).to_bytes(8, "big"))
         kwargs["eui48"] = eui48
         data = ee_data._replace(**kwargs)
         self.eeprom.write(0, data.pack()[:128])

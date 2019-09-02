@@ -4,14 +4,14 @@ from collections import namedtuple
 
 _SinaraTuple = namedtuple("Sinara", (
     "name",          # 10s, name of the board, human redable
-    "id",            # H, board ID
+    "board",         # H, board ID
     "data_rev",      # B, EEPROM data format revision
     "major",         # B, board major revision
     "minor",         # B, board minor revision
     "variant",       # B, board variant
     "port",          # B, board port
-    "vendor",        # B, manufacturer/vendor
-    "serial",        # 8s, manufacturer-assigned serial number
+    "vendor",        # B, vendor id
+    "vendor_data",   # 8s, vendor reserved: serial number/data
     "project_data",  # 16s, project reserved
     "user_data",     # 16s, user reserved
     "board_data",    # 64s, board data
@@ -20,9 +20,9 @@ _SinaraTuple = namedtuple("Sinara", (
 
 
 class Sinara(_SinaraTuple):
-    _defaults = _SinaraTuple(name="Unknown", id=0, data_rev=0,
+    _defaults = _SinaraTuple(name="Unknown", board=0, data_rev=0,
                              major=0, minor=0, variant=0, port=0, vendor=0,
-                             serial=b"\xff"*8, project_data=b"\xff"*16,
+                             vendor_data=b"\xff"*8, project_data=b"\xff"*16,
                              user_data=b"\xff"*16, board_data=b"\xff"*64,
                              eui48=b"\xff"*6)
     _struct = struct.Struct(">I H 10s HBBBBBB 8s 16s 16s 64s 122s 6s")
@@ -31,16 +31,16 @@ class Sinara(_SinaraTuple):
     _crc = zlib.crc32
     _pad = b"\xff" * 122
 
-    ids = [
+    boards = [
         "invalid",
-        "VHDCI-Carrier",
-        "Sayma-RTM",
-        "Sayma-AMC",
+        "VHDCI_Carrier",
+        "Sayma_RTM",
+        "Sayma_AMC",
         "Metlino",
         "Kasli",
-        "DIO-BNC",
-        "DIO-SMA",
-        "DIO-RJ45",
+        "DIO_BNC",
+        "DIO_SMA",
+        "DIO_RJ45",
         "Urukul",
         "Zotino",
         "Novogorny",
@@ -50,14 +50,39 @@ class Sinara(_SinaraTuple):
         "Banker",
         "Humpback",
         "Stabilizer",
+        "Kasli-BP",
         # ...
     ]
+    board_descriptions = {
+        "Kasli": "8/12 EEM FPGA",
+        "DIO_BNC": "8x iso BNC IO",
+        "DIO_SMA": "8x iso SMA IO",
+        "DIO_RJ45": "16x LVDS RJ45 IO",
+        "Urukul": "4x 1GS/s DDS",
+        "Zotino": "32x 1MS/s 16b DAC",
+        "Novogorny": "8x 16b ADC",
+        "Sampler": "8x 1.5MS/s 16b ADC",
+        "Grabber": "CCD frame grabber",
+        "Mirny": "4x 53-13600MHz PLL",
+        "Banker": "128x IO+FPGA",
+        "Humpback": "uC+FPGA carrier",
+        "Stabilizer": "2x 16b ADC+DAC+uC",
+        "Kasli_BP": "Kasli backplane adapter",
+    }
+    board_variants = {
+        "Urukul": ["AD9910", "AD9912"],
+        }
+
     vendors = [
         "invalid",
         "Technosystem",
         "Creotech",
+        "QUARTIQ",
         # ...
     ]
+    vendor_description = {
+        "QUARTIQ": "QUARTIQ GmbH\nRudower Chaussee 29\n12489 Berlin, Germany",
+    }
 
     def pack(self):
         name = self[0].encode()
@@ -88,8 +113,8 @@ Sinara.__new__.__defaults__ = Sinara._defaults
 
 if __name__ == "__main__":
     s = Sinara(name="DIO-BNC",
-               id=Sinara.ids.index("DIO-BNC"),
-               data_rev=0, major=1, minor=1, variant=0, port=0,
+               board=Sinara.boards.index("DIO-BNC"),
+               data_rev=Sinara.data_rev, major=1, minor=1, variant=0, port=0,
                vendor=Sinara.vendors.index("Technosystem"))
     print(s)
     print(s.pack())

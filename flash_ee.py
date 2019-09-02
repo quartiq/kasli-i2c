@@ -16,10 +16,10 @@ if __name__ == "__main__":
 
     ee_data = Sinara(
         name="Kasli",
-        id=Sinara.ids.index("Kasli"),
+        board=Sinara.boards.index("Kasli"),
         data_rev=0, major=1, minor=1, variant=0, port=0,
         vendor=Sinara.vendors.index("Technosystem"),
-        serial=serial.to_bytes(8, "big"))
+        vendor_data=serial.to_bytes(8, "big"))
 
     ft_serial = "Kasli-v1.1-{}".format(serial)
     url = "ftdi://ftdi:4232h:{}/2".format(ft_serial)
