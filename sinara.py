@@ -20,7 +20,7 @@ _SinaraTuple = namedtuple("Sinara", (
 
 
 class Sinara(_SinaraTuple):
-    _defaults = _SinaraTuple(name="Unknown", board=0, data_rev=0,
+    _defaults = _SinaraTuple(name="invalid", board=0, data_rev=0,
                              major=0, minor=0, variant=0, port=0, vendor=0,
                              vendor_data=b"\xff"*8, project_data=b"\xff"*16,
                              user_data=b"\xff"*16, board_data=b"\xff"*64,
@@ -50,7 +50,6 @@ class Sinara(_SinaraTuple):
         "Banker",
         "Humpback",
         "Stabilizer",
-        "Kasli_BP",
         # ...
     ]
     descriptions = {
@@ -67,7 +66,6 @@ class Sinara(_SinaraTuple):
         "Banker": "128x IO+FPGA",
         "Humpback": "uC+FPGA carrier",
         "Stabilizer": "2x 16b ADC+DAC+uC",
-        "Kasli_BP": "Backplane adapter",
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
@@ -86,6 +84,7 @@ class Sinara(_SinaraTuple):
 
     def pack(self):
         name = self[0].encode()
+        assert self[0] == self.boards[self.board]
         eui48 = self[-1]
         data = self._struct.pack(
             0, self._magic, name, *self[1:-1], self._pad, eui48)
@@ -108,8 +107,43 @@ class Sinara(_SinaraTuple):
         return cls(*fields, eui48)
 
     @property
+    def board_fmt(self):
+        return self.boards[self.board]
+
+    @property
+    def vendor_fmt(self):
+        return self.vendors[self.vendor]
+
+    @property
+    def variant_fmt(self):
+        if self.board_fmt in self.variants:
+            return "{}".format(self.variants[self.board_fmt][self.variant])
+
+    @property
+    def name_fmt(self):
+        s = self.board_fmt
+        v = self.variant_fmt
+        if v is not None:
+            s += "-{}".format(v)
+        s += "/{}".format(self.hw_rev)
+        return s
+
+    @property
+    def description(self):
+        return self.descriptions[self.board_fmt]
+
+    @property
     def eui48_fmt(self):
         return "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}-{:02x}".format(*self.eui48)
+
+    @property
+    def hw_rev(self):
+        return "v{:d}.{:d}".format(self.major, self.minor)
+
+    @staticmethod
+    def parse_hw_rev(v):
+        v = v.strip().strip("v").split(".", 2)
+        return int(v[0]), int(v[1]), v[2:]
 
 
 Sinara.__new__.__defaults__ = Sinara._defaults
