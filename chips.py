@@ -361,6 +361,7 @@ class LM75:
                     interrupt=(cfg >> 1) & 1, shutdown=cfg & 1)
 
     def report(self):
+        # return  # FIXME: doesn't respond anymore
         logger.info("LM75: config: %s, T=%.1f C, H=%.1f C, S=%.1f C",
                     self.get_config(), self.get_temperature(),
                     self.get_hysteresis(), self.get_shutdown())
