@@ -16,21 +16,25 @@ logger = logging.getLogger(__name__)
 
 __vendor__ = "QUARTIQ"
 
-__vendor_description__ = "QUARTIQ GmbH", "Rudower Chaussee 29", "12489 Berlin, Germany"
-
 today = datetime.date.today().isoformat()
 
 
 def get_kasli(description):
     target = description["target"].capitalize()
     v = Sinara.parse_hw_rev(description["hw_rev"])
+    port = 0
+    if "eui48" in description:
+        eui48 = Sinara.parse_eui48(description["eui48"][port])
+    else:
+        eui48 = Sinara._defaults.eui48
     ee = [Sinara(
         name=target,
         board=Sinara.boards.index(target),
         major=v[0],
         minor=v[1],
         variant=description.get("hw_variant", 0),
-        port=0,
+        port=port,
+        eui48=eui48,
         vendor=Sinara.vendors.index(description["vendor"]))]
     return ee
 
@@ -43,6 +47,10 @@ def get_eem(description):
             description["variant"])
     else:
         variant = 0
+    if "eui48" in description:
+        eui48 = [Sinara.parse_eui48(_) for _ in description["eui48"]]
+    else:
+        eui48 = [Sinara._defaults.eui48]*len(description["ports"])
     return [Sinara(
         name=name,
         board=Sinara.boards.index(name),
@@ -50,30 +58,27 @@ def get_eem(description):
         minor=v[1],
         variant=variant,
         port=port,
+        eui48=eui48[port],
         vendor=Sinara.vendors.index(__vendor__))
         for port in range(len(description["ports"]))]
 
 
 def get_sinara_label(s):
+    assert s.vendor_fmt == __vendor__
     return """
 ^XA
 ^LH20,10^CFA
 ^FO0,10^FB140,4^FD{s.name_fmt}\&{s.description}\&{s.eui48_fmt}^FS
-^FO0,55^FB140,3^FD{vendor}^FS
-^FO0,90^FB220,2^FD{s.url}\&{license} - {date}^FS
-^FO140,0^BQN,2,2^FDQA,{uri}^FS
-^XZ""".format(
-        s=s,
-        vendor="\\&".join(__vendor_description__),
-        date=today,
-        license=s.licenses.get(s.board, s.licenses[None]),
-        uri="https://qr.quartiq.de/sinara/{}".format(s.eui48_fmt))
+^FO0,55^FB140,3^FDQUARTIQ GmbH\&Rudower Chaussee 29\&12489 Berlin, Germany^FS
+^FO0,90^FB220,2^FD{s.url}\&{s.license} - {date}^FS
+^FO140,0^BQN,2,2^FDQA,https://qr.quartiq.de/sinara/{s.eui48_fmt}^FS
+^XZ""".format(s=s, date=today)
 
 
-def flash(description, ss, ft_serial=""):
+def flash(description, ss, ft_serial=None):
     ss_new = []
-    ft_serial = "Kasli-v1.1-{}".format(description["serial"])
-    url = "ftdi://ftdi:4232h:{}/2".format(ft_serial)
+    url = "ftdi://ftdi:4232h{}/2".format(
+            ":" + ft_serial if ft_serial is not None else "")
     with Kasli().configure(url) as bus:
         # bus.reset()
         ee = EEPROM(bus)
@@ -88,6 +93,8 @@ def flash(description, ss, ft_serial=""):
                             description["peripherals"][i - 1]["ports"][j])
                     bus.enable(port)  # TODO: Banker, Humpback switch
                     eui48 = ee.eui48()
+                    if si.eui48 not in (eui48, si._defaults.eui48):
+                        logger.warning("eui48 mismatch, %s->%s", si.eui48, eui48)
                     new = si._replace(eui48=eui48)
                     skip = False
                     try:
@@ -134,6 +141,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("-p", "--printer", type=str, default=None)
     p.add_argument("-u", "--update", action="store_true")
+    p.add_argument("-s", "--serial", type=str, default=None)
     p.add_argument("description")
     args = p.parse_args()
 
@@ -144,7 +152,7 @@ if __name__ == "__main__":
     ss = [get_kasli(description)]
     ss.extend(get_eem(p) for p in description["peripherals"])
     if args.update:
-        ss = flash(description, ss)
+        ss = flash(description, ss, args.serial)
         description["eui48"] = [s.eui48_fmt for s in ss[0]]
         for i, s in enumerate(ss[1:]):
             description["peripherals"][i]["eui48"] = [si.eui48_fmt for si in s]

@@ -1,6 +1,11 @@
 import struct
+import logging
 import zlib
 from collections import namedtuple
+
+
+logger = logging.getLogger(__name__)
+
 
 _SinaraTuple = namedtuple("Sinara", (
     "name",          # 10s, name of the board, human redable
@@ -84,7 +89,7 @@ class Sinara(_SinaraTuple):
 
     def pack(self):
         name = self[0].encode()
-        assert self[0] == self.boards[self.board]
+        assert self[0] == self.boards_fmt
         eui48 = self[-1]
         data = self._struct.pack(
             0, self._magic, name, *self[1:-1], self._pad, eui48)
@@ -102,7 +107,7 @@ class Sinara(_SinaraTuple):
             if pad != cls._pad:
                 raise ValueError("Unexpected read-only pad data")
             if crc != cls._crc(data[4:]):
-                raise ValueError("Invalid CRC")
+                logger.warning("Invalid CRC")
         fields[0] = fields[0].strip(b"\x00").decode()
         return cls(*fields, eui48)
 
@@ -136,6 +141,10 @@ class Sinara(_SinaraTuple):
     def eui48_fmt(self):
         return "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}-{:02x}".format(*self.eui48)
 
+    @staticmethod
+    def parse_eui48(eui48):
+        return bytes([int(_, 16) for _ in eui48.split("-", 5)])
+
     @property
     def hw_rev(self):
         return "v{:d}.{:d}".format(self.major, self.minor)
@@ -144,6 +153,10 @@ class Sinara(_SinaraTuple):
     def parse_hw_rev(v):
         v = v.strip().strip("v").split(".", 2)
         return int(v[0]), int(v[1]), v[2:]
+
+    @property
+    def license(self):
+        return self.licenses.get(self.board_fmt, self.licenses[None])
 
 
 Sinara.__new__.__defaults__ = Sinara._defaults
