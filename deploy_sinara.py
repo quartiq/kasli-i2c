@@ -139,9 +139,10 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     p = argparse.ArgumentParser()
-    p.add_argument("-p", "--printer", type=str, default=None)
+    p.add_argument("-p", "--printer")
     p.add_argument("-u", "--update", action="store_true")
-    p.add_argument("-s", "--serial", type=str, default=None)
+    p.add_argument("-s", "--serial")
+    p.add_argument("-k", "--kasli", type=int, default=1)
     p.add_argument("description")
     args = p.parse_args()
 
@@ -160,7 +161,8 @@ if __name__ == "__main__":
             f.write(json.dumps(description, indent=4))
 
     labels = [get_sinara_label(s[0]) for s in ss]
-    labels.insert(0, labels[0])  # repeat first
+    for i in range(args.kasli):
+        labels.insert(0, labels[0])  # repeat first
     with open("labels/{}.zpl".format(ss[0][0].eui48_fmt), "w") as f:
         f.write("\n".join(labels))
     if args.printer:
