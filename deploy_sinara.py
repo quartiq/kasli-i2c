@@ -154,11 +154,16 @@ if __name__ == "__main__":
     ss.extend(get_eem(p) for p in description["peripherals"])
     if args.update:
         ss = flash(description, ss, args.serial)
-        description["eui48"] = [s.eui48_fmt for s in ss[0]]
-        for i, s in enumerate(ss[1:]):
-            description["peripherals"][i]["eui48"] = [si.eui48_fmt for si in s]
-        with open("meta/{}.json".format(ss[0][0].eui48_fmt), "w") as f:
-            f.write(json.dumps(description, indent=4))
+        for i, s in enumerate(ss):
+            e = [si.eui48_fmt for si in s]
+            if any(ei != Sinara._defaults.eui48_fmt for ei in e):
+                if i == 0:
+                    description["eui48"] = e
+                    description.move_to_end("peripherals")
+                else:
+                    description["peripherals"][i - 1]["eui48"] = e
+    with open("meta/{}.json".format(ss[0][0].eui48_fmt), "w") as f:
+        f.write(json.dumps(description, indent=4))
 
     labels = [get_sinara_label(s[0]) for s in ss]
     for i in range(args.kasli):

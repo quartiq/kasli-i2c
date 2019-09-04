@@ -159,6 +159,7 @@ class Sinara(_SinaraTuple):
         return self.licenses.get(self.board_fmt, self.licenses[None])
 
 
+Sinara._defaults = Sinara(*Sinara._defaults)
 Sinara.__new__.__defaults__ = Sinara._defaults
 
 
