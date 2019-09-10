@@ -111,7 +111,8 @@ def flash(description, ss, ft_serial=None):
                             logger.info("change data: %s", ", ".join(
                                 "{}: {}->{}".format(
                                     k, old_dict[k], new_dict[k])
-                                for k in old._fields))
+                                for k in old._fields
+                                if old_dict[k] != new_dict[k]))
                         else:
                             skip = True
                     except:
