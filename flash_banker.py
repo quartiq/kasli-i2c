@@ -77,9 +77,9 @@ class Banker:
         ee_data = Sinara(
             name="Banker",
             board=Sinara.boards.index("Banker"),
-            data_rev=0, major=1, minor=0, variant=0, port=0,
-            vendor=Sinara.vendors.index("Technosystem"),
-            vendor_data=(0).to_bytes(8, "big"))
+            major=1, minor=0, variant=0, port=0,
+            vendor=Sinara.vendors.index("QUARTIQ"),
+            vendor_data=Sinara._defaults.vendor_data)
         kwargs["eui48"] = eui48
         data = ee_data._replace(**kwargs)
         self.eeprom.write(0, data.pack()[:128])
@@ -94,18 +94,17 @@ class Banker:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    serial = int(sys.argv[1])
+    serial = sys.argv[1]
     logger.info("serial: %s", serial)
 
-    ft_serial = "Kasli-v1.1-{}".format(serial)
-    url = "ftdi://ftdi:4232h:{}/2".format(ft_serial)
+    url = "ftdi://ftdi:4232h:{}/2".format(serial)
     with Kasli().configure(url) as bus, bus.enabled(sys.argv[2]):
         b = Banker(bus)
         with b.sw.enabled(0b101):
             b.init()
             action = sys.argv[3]
             if action == "eeprom":
-                b.eeprom_update(serial=int(sys.argv[4]).to_bytes(8, "big"))
+                b.eeprom_update()
             with b.flash_upd():
                 b.report()
                 if action == "read":

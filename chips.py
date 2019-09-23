@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import struct
 
 from sinara import Sinara
+from pyftdi.i2c import I2cNackError
 
 logger = logging.getLogger(__name__)
 
