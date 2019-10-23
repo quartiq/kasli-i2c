@@ -8,7 +8,7 @@ import socket
 
 from sinara import Sinara
 from kasli import Kasli
-from chips import EEPROM
+from chips import EEPROM, PCA9548
 from label import render_zpl
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ def flash(description, ss, ft_serial=None):
     url = "ftdi://ftdi:4232h{}/2".format(
             ":" + ft_serial if ft_serial is not None else "")
     with Kasli().configure(url) as bus:
-        # bus.reset()
+        # bus.reset_switch()
         ee = EEPROM(bus)
         try:
             for i, s in enumerate(ss):
@@ -92,6 +92,9 @@ def flash(description, ss, ft_serial=None):
                         port = "EEM{:d}".format(
                             description["peripherals"][i - 1]["ports"][j])
                     bus.enable(port)  # TODO: Banker, Humpback switch
+                    if description["peripherals"][i - 1]["type"] in "banker humpback".split():
+                        continue
+                        PCA9548(bus, addr=0x72).set(0b0)  # no eeprom
                     eui48 = ee.eui48()
                     if si.eui48 not in (eui48, si._defaults.eui48):
                         logger.warning("eui48 mismatch, %s->%s", si.eui48, eui48)
