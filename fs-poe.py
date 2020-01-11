@@ -1,7 +1,7 @@
 import telnetlib
 
 class FS(telnetlib.Telnet):
-    prompts = [b"[>|#] "]
+    prompts = [b"[>|#]"]
 
     def __init__(self, host, password):
         super().__init__(host, 23, 10)
@@ -10,8 +10,8 @@ class FS(telnetlib.Telnet):
         self.read_until(b"Password: ")
         self.write("{}\r".format(password).encode())
         self.expect(self.prompts)
+        self.cmd("enable")
         self.cmd("terminal length 0")
-        self.cmd("enable 15")
 
     def cmd(self, cmd):
         cmd = "{}\r".format(cmd).encode()
@@ -20,9 +20,9 @@ class FS(telnetlib.Telnet):
         return out
 
     def poe(self, port, enable=True):
-        self.cmd("configure terminal")
-        self.cmd("interface GigabitEthernet 1/{}".format(port))
-        self.cmd("poe mode plus" if enable else "no poe mode")
+        self.cmd("config")
+        self.cmd("interface GigaEthernet 0/{}".format(port))
+        self.cmd("no poe disable" if enable else "poe disable")
         self.cmd("exit")
         self.cmd("exit")
 
