@@ -80,7 +80,7 @@ def flash(description, ss, ft_serial=None):
     url = "ftdi://ftdi:4232h{}/2".format(
             ":" + ft_serial if ft_serial is not None else "")
     with Kasli().configure(url) as bus:
-        # bus.reset_switch()
+        bus.reset_switch()
         ee = EEPROM(bus)
         try:
             for i, s in enumerate(ss):
@@ -91,10 +91,11 @@ def flash(description, ss, ft_serial=None):
                     else:
                         port = "EEM{:d}".format(
                             description["peripherals"][i - 1]["ports"][j])
+                        if description["peripherals"][i - 1]["type"] in "banker humpback".split():
+                            continue
+                            PCA9548(bus, addr=0x72).set(0b0)  # no eeprom
+                    logger.info("%s", port)
                     bus.enable(port)  # TODO: Banker, Humpback switch
-                    if description["peripherals"][i - 1]["type"] in "banker humpback".split():
-                        continue
-                        PCA9548(bus, addr=0x72).set(0b0)  # no eeprom
                     eui48 = ee.eui48()
                     if si.eui48 not in (eui48, si._defaults.eui48):
                         logger.warning("eui48 mismatch, %s->%s", si.eui48, eui48)
@@ -118,10 +119,12 @@ def flash(description, ss, ft_serial=None):
                                 if old_dict[k] != new_dict[k]))
                         else:
                             skip = True
+                            logger.info("skipping update")
                     except:
                         logger.debug("invalid data")
                     ss_new[-1].append(new)
                     if not skip:
+                        logger.info("writing %s", new)
                         ee.write(0, new.pack()[:128])
                         data = ee.dump()
                         try:
@@ -147,8 +150,12 @@ if __name__ == "__main__":
     p.add_argument("-u", "--update", action="store_true")
     p.add_argument("-s", "--serial")
     p.add_argument("-k", "--kasli", type=int, default=1)
+    p.add_argument("-v", "--verbose", default=0, action="count")
     p.add_argument("description")
     args = p.parse_args()
+
+    logging.basicConfig(
+        level=[logging.WARNING, logging.INFO, logging.DEBUG][args.verbose])
 
     with open(args.description) as f:
         description = json.load(f, object_pairs_hook=OrderedDict)
