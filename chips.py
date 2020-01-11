@@ -418,7 +418,7 @@ class SPI:
         self.bus.write_many(self.addr, 0xf7, [cfg])
 
 
-class SPIFlash:
+class SPIFlash:  # SPI flash behind SC18IS602B I2C-to-SPI converter
     def __init__(self, bus, ss, sector=0x10000):
         self.ss = ss  # slave select bit mask
         self.bus = bus
@@ -447,12 +447,18 @@ class SPIFlash:
         self.xfer([0x04])
         assert not self.read_status() & 2  # WE
 
+    def wakeup(self):
+        self.xfer([0xab])
+
+    def power_down(self):
+        self.xfer([0xb9])
+
     def poll(self, timeout=4.):
         t = time.monotonic()
-        while self.read_status() & 1:  # write in progress
+        while self.read_status() & 1:  # busy
             if time.monotonic() - t > timeout:
-                raise ValueError("write timeout")
-        logger.debug("write took %g s", time.monotonic() - t)
+                raise ValueError("busy timeout")
+        logger.debug("busy for %g s", time.monotonic() - t)
 
     def read_data_bytes(self, offset, length):
         return self.xfer(self.cmd(0x03, offset) + bytes(length), read=True)[4:]
@@ -465,22 +471,24 @@ class SPIFlash:
         self.xfer(self.cmd(0x02, offset) + data)
         self.poll()
 
-    def flash(self, offset, data):
+    def flash(self, offset, data, verify=True):
         n = 128  # self.bus.max_buffer - 4 will cross page boundary
         assert offset & (self.sector - 1) == 0
         for addr in range(offset, offset + len(data), n):
             if not addr & (self.sector - 1):
                 self.write_enable()
                 self.sector_erase(addr)
-            write = data[addr - offset:addr - offset + n]
             self.write_enable()
+            write = data[addr - offset:addr - offset + n]
             self.page_program(addr, write)
-            read = self.read_data_bytes(addr, len(write))
-            logger.info("%#06x / %#06x", addr, offset + len(data))
-            if write != read:
-                raise RuntimeError("verify failed at %#06x: "
-                                   "write %r != read %r",
-                                    hex(addr), write, read)
+            logger.info("wrote %#06x bytes at %#06x", offset + len(write), addr)
+            if verify:
+                read = self.read_data_bytes(addr, len(write))
+                if write != read:
+                    raise RuntimeError("verify failed at %#06x: "
+                                       "write %r != read %r",
+                                        hex(addr), write, read)
+        self.write_disable()
 
 
 class SinaraEEPROM(EEPROM):
@@ -490,5 +498,3 @@ class SinaraEEPROM(EEPROM):
             logger.info("Sinara: %s", Sinara.unpack(self.dump()))
         except:
             logger.info("Sinara data invalid")
-
-
