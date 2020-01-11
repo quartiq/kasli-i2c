@@ -55,6 +55,8 @@ class Sinara(_SinaraTuple):
         "Banker",
         "Humpback",
         "Stabilizer",
+        "Fastino",
+        "Phaser",
         # ...
     ]
     descriptions = {
@@ -71,9 +73,12 @@ class Sinara(_SinaraTuple):
         "Banker": "128x IO+FPGA",
         "Humpback": "uC+FPGA carrier",
         "Stabilizer": "2x 16b ADC+DAC+uC",
+        "Fastino": "32x 2MS/s 16b DAC",
+        "Phaser": "2x RF DAC + LF ADC",
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
+        "Phaser": ["Baseband", "Upconverter"],
         }
 
     vendors = [
