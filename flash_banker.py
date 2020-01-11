@@ -60,6 +60,7 @@ class Banker:
         self.spi.gpio_write(0b1000)
         self.spi.gpio_write(0b0010)
         try:
+            self.flash.wakeup()
             yield
         finally:
             self.spi.gpio_write(0b1000)
