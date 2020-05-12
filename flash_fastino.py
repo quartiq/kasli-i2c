@@ -21,7 +21,7 @@ class Fastino:
     def init(self):
         self.spi.gpio_write(0b1000)  # GPIO output values
         # ssel bidir (ignored), spi_en: push-pull, cdone: input, creset: bidir
-        self.spi.gpio_config(0b00, 0b01, 0b10, 0b00)
+        self.spi.gpio_config(0b00, 0b01, 0b10, 0b01)
         self.spi.gpio_enable(0b1110)  # use as GPIO
         i = self.spi.gpio_read()
         assert not i & 0b0010  # SPI disable
@@ -45,8 +45,8 @@ class Fastino:
 
     def creload(self, timeout=.5):
         self.spi.gpio_write(0b0000)  # CRESET
-        assert not self.spi.gpio_read() & 0b1000  # CRESET assert
-        assert not self.spi.gpio_read() & 0b0100  # not CDONE
+        i = self.spi.gpio_read()
+        assert not self.spi.gpio_read() & 0b1100, i  # CRESET assert, not CDONE
         self.spi.gpio_write(0b1000)  # no CRESET
         assert self.spi.gpio_read() & 0b1000  # CRESET deassert
         t = time.monotonic()
@@ -111,11 +111,12 @@ if __name__ == "__main__":
         action = sys.argv[3]
         if action == "eeprom":
             b.eeprom_update()
-        with b.flash_upd():
-            b.report_flash()
-            if action == "read":
-                b.dump(sys.argv[4])
-            elif action == "write":
-                with open(sys.argv[4], "rb") as fil:
-                    b.flash.flash(0, fil.read(), verify=False)
+        if False:
+            with b.flash_upd():
+                b.report_flash()
+                if action == "read":
+                    b.dump(sys.argv[4])
+                elif action == "write":
+                    with open(sys.argv[4], "rb") as fil:
+                        b.flash.flash(0, fil.read(), verify=False)
         b.creload()

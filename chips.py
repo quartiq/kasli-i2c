@@ -415,6 +415,7 @@ class SPI:
     def gpio_config(self, *ss):
         """quasi-bidir, push-pull, input, open-drain"""
         cfg = sum((ssi << (2*i) for i, ssi in enumerate(ss)), 0)
+        logger.info("gpio config %#02x", cfg)
         self.bus.write_many(self.addr, 0xf7, [cfg])
 
 

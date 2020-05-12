@@ -57,6 +57,7 @@ class Sinara(_SinaraTuple):
         "Stabilizer",
         "Fastino",
         "Phaser",
+        "Clocker",
         # ...
     ]
     descriptions = {
@@ -75,6 +76,7 @@ class Sinara(_SinaraTuple):
         "Stabilizer": "2x 16b ADC+DAC+uC",
         "Fastino": "32x 2MS/s 16b DAC",
         "Phaser": "2x RF DAC + LF ADC",
+        "Clocker": "2x4 clock fan out",
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
