@@ -2,14 +2,13 @@ from contextlib import contextmanager
 import logging
 
 from sinara import Sinara
-from i2c_mpsse import I2C as I2C
-from i2c_bitbang import I2C as I2CBB
+from i2c_bitbang import I2C, I2CNACK
 import chips
 
 logger = logging.getLogger(__name__)
 
 
-class Kasli(I2CBB, chips.ScanI2C):
+class Kasli(I2C, chips.ScanI2C):
     ports = {
         "ROOT": [],
         "EEM0": [(0x70, 7)],
@@ -105,7 +104,7 @@ if __name__ == "__main__":
     url = "ftdi://ftdi:4232h:{}/{}".format(args.serial, args.port)
     with Kasli().configure(url) as bus:
         bus.skip = args.skip
-        bus.reset_switch()
+        bus.reset()
         # bus.clear()
         try:
             for action in args.action:

@@ -14,8 +14,8 @@ class I2C:
     SCL = 1 << 0
     SDAO = 1 << 1
     SDAI = 1 << 2
-    EN = 1 << 4
-    RESET_B = 1 << 5
+    EN = (1 << 4) | (1 << 6)  # 4 on <=v2.0, 6 on >v2.0
+    RESET = 1 << 5  # >=v2.0, <v2.0 has it on CDBUS4
     max_clock_stretch = 100
 
     def __init__(self):
@@ -30,10 +30,10 @@ class I2C:
     def tick(self):
         self._time += 1
 
-    def reset_switch(self):
-        self.write(self.EN)
+    def reset(self):
+        self.write(self.EN | self.RESET)
         self.tick()
-        self.write(self.EN | self.RESET_B)
+        self.write(self.EN)
         self.tick()
         time.sleep(.01)
 
@@ -48,7 +48,7 @@ class I2C:
         return self.dev.read_pins()
 
     def scl_oe(self, oe):
-        d = (self._direction & ~self.SCL)
+        d = self._direction & ~self.SCL
         if oe:
             d |= self.SCL
         self.set_direction(d)
@@ -73,10 +73,11 @@ class I2C:
         raise ValueError("SCL low exceeded clock stretch limit")
 
     def acquire(self):
-        self.write(self.EN | self.RESET_B)  # RESET_B, EN, !SCL, !SDA
-        self.set_direction(self.EN | self.RESET_B)  # enable USB-I2C
+        # EN, !SCL, !SDA
+        self.write(self.EN)
+        # enable USB-I2C
+        self.set_direction(self.EN | self.RESET)
         self.tick()
-        # self.reset_switch()
         time.sleep(.1)
         i = self.read()
         if not i & self.EN:
@@ -90,9 +91,8 @@ class I2C:
         return self
 
     def release(self):
-        # self.reset_switch()
-        self.set_direction(self.EN | self.RESET_B)
-        self.write(self.RESET_B)
+        self.set_direction(self.EN | self.RESET)
+        self.write(0)
         self.tick()
         i = self.read()
         if i & self.EN:
