@@ -8,7 +8,7 @@ FT_SERIAL=$SERIAL
 
 {
 
-IP=10.0.16.100
+IP=10.34.16.100
 FT_BUS=1
 FT_PORT=7.4
 
@@ -24,7 +24,7 @@ artiq_flash -t kasli -I "ftdi_serial $FT_SERIAL" -V tester --srcbuild -d artiq_k
 stty -F $UART_DEV 115200 cs8 -cstopb -parenb opost onlcr
 timeout --foreground 15 socat stdio $UART_DEV || true
 sudo arp -d $IP || true
-ping -c4 $IP
+ping -w40 -W40 -c4 $IP
 echo SUCCESS
 
 } 2>&1 | tee deploy_$FT_SERIAL.log
