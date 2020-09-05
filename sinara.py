@@ -58,6 +58,8 @@ class Sinara(_SinaraTuple):
         "Fastino",
         "Phaser",
         "Clocker",
+        "Booster",
+        "Booster_Channel"
         # ...
     ]
     descriptions = {
@@ -77,11 +79,13 @@ class Sinara(_SinaraTuple):
         "Fastino": "32x 2MS/s 16b DAC",
         "Phaser": "2x RF DAC + LF ADC",
         "Clocker": "2x4 clock fan out",
+        "Booster": "8x RF power amp",
+        "Booster_Channel": "RFPA module"
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
         "Phaser": ["Baseband", "Upconverter"],
-        }
+    }
 
     vendors = [
         "invalid",
