@@ -111,7 +111,7 @@ if __name__ == "__main__":
         action = sys.argv[3]
         if action == "eeprom":
             b.eeprom_update()
-        if False:
+        if True:
             with b.flash_upd():
                 b.report_flash()
                 if action == "read":

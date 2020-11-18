@@ -10,7 +10,7 @@ FT_SERIAL=$SERIAL
 
 IP=10.34.16.100
 FT_BUS=1
-FT_PORT=7.4
+FT_PORT=7.2
 
 UART_DEV=/dev/serial/by-id/usb-ARTIQ_Sinara_Quad_RS232-HS_$FT_SERIAL-if02-port0
 BUSNUM=$(cat /sys/bus/usb/devices/$FT_BUS-$FT_PORT/busnum)
