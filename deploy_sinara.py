@@ -64,7 +64,7 @@ def get_eem(description):
 
 
 def get_sinara_label(s):
-    assert s.vendor_fmt == __vendor__
+    # assert s.vendor_fmt == __vendor__
     return """
 ^XA
 ^LH20,10^CFA
@@ -103,18 +103,21 @@ def flash(description, ss, ft_serial=None):
                     if si.eui48 not in (eui48, si._defaults.eui48):
                         logger.warning("eui48 mismatch, %s->%s", si.eui48, eui48)
                     new = si._replace(eui48=eui48)
-                    skip = False
+                    old = None
                     try:
                         old = Sinara.unpack(ee.dump())
-                        logger.debug("valid data %s", old)
+                        logger.debug("old data: valid data %s", old)
                         # don't touch data fields
                         new = new._replace(
                             project_data=old.project_data,
                             board_data=old.board_data,
                             user_data=old.user_data
                         )
-                        # don't touch eeprom if not our vendor
-                        if old.vendor in (0x00, 0xff, new.vendor) and old != new:
+                        # don't touch eeprom if valid other vendor
+                        if old.vendor not in (0x00, 0xff, new.vendor):
+                            logger.info("old data: existing vendor data, skipping update")
+                            new = old
+                        if new != old:
                             old_dict = old._asdict()
                             new_dict = new._asdict()
                             logger.info("change data: %s", ", ".join(
@@ -122,24 +125,23 @@ def flash(description, ss, ft_serial=None):
                                     k, old_dict[k], new_dict[k])
                                 for k in old._fields
                                 if old_dict[k] != new_dict[k]))
-                        else:
-                            skip = True
-                            logger.info("skipping update")
                     except:
-                        logger.debug("invalid data")
-                    ss_new[-1].append(new)
-                    if not skip:
+                        logger.info("old data: invalid", exc_info=True)
+                    if new == old:
+                        logger.info("new data: unchanged, skipping update")
+                    else:
                         logger.info("writing %s", new)
                         ee.write(0, new.pack()[:128])
-                        data = ee.dump()
+                        new_readback = ee.dump()
                         try:
-                            Sinara.unpack(data)
+                            Sinara.unpack(new_readback)
                             logger.debug("data readback valid")
                         except:
                             logger.error("data readback invalid %r",
-                                         data, exc_info=True)
+                                         new_readback, exc_info=True)
                     open("data/{}.bin".format(new.eui48_fmt), "wb"
                          ).write(new.pack())
+                    ss_new[-1].append(new)
 
         finally:
             bus.enable()
