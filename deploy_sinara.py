@@ -80,14 +80,17 @@ def flash(description, ss, ft_serial=None):
     url = "ftdi://ftdi:4232h{}/2".format(
             ":" + ft_serial if ft_serial is not None else "")
     with Kasli().configure(url) as bus:
-        bus.reset_switch()
-        ee = EEPROM(bus)
+        # bus.reset_switch()
+        bus.reset()
         try:
             for i, s in enumerate(ss):
                 ss_new.append([])
                 for j, si in enumerate(s):
+                    ee = EEPROM(bus)
                     if i == 0:
                         port = "LOC0"
+                        if si.hw_rev in ["v2.0",]:
+                            ee = EEPROM(bus, addr=0x57)  # v2
                     else:
                         port = "EEM{:d}".format(
                             description["peripherals"][i - 1]["ports"][j])
