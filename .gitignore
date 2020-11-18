@@ -1,6 +1,10 @@
 *.bin
 /data/*
 !/data/.keep_me
+/meta/*
+!/meta/.keep_me
+/labels/*
+!/labels/.keep_me
 /log/*
 !/log/.keep_me
 /kasli-ft4232h.conf

@@ -107,12 +107,14 @@ def flash(description, ss, ft_serial=None):
                     try:
                         old = Sinara.unpack(ee.dump())
                         logger.debug("valid data %s", old)
+                        # don't touch data fields
                         new = new._replace(
                             project_data=old.project_data,
                             board_data=old.board_data,
                             user_data=old.user_data
                         )
-                        if old != new:
+                        # don't touch eeprom if not our vendor
+                        if old.vendor in (0x00, 0xff, new.vendor) and old != new:
                             old_dict = old._asdict()
                             new_dict = new._asdict()
                             logger.info("change data: %s", ", ".join(
@@ -164,8 +166,10 @@ if __name__ == "__main__":
         description = json.load(f, object_pairs_hook=OrderedDict)
     assert description["vendor"] == __vendor__
 
+    # build a list of Sinara eeprom contents from description
     ss = [get_kasli(description)]
     ss.extend(get_eem(p) for p in description["peripherals"])
+
     if args.update:
         ss = flash(description, ss, args.serial)
         for i, s in enumerate(ss):
