@@ -37,8 +37,8 @@ class Phaser:
         self.temp1.report()
         self.temp2.report()
         logging.info("gpio: %#02x", self.spi.gpio_read())
-        logging.info("ident: %r", self.flash.read_identification())
-        logging.info("status: %#02x", self.flash.read_status())
+        #logging.info("ident: %r", self.flash.read_identification())
+        #logging.info("status: %#02x", self.flash.read_status())
 
     def creload(self, timeout=1):
         self.spi.gpio_write(0b1000)
@@ -100,14 +100,16 @@ if __name__ == "__main__":
     with Kasli().configure(url) as bus, bus.enabled(sys.argv[2]):
         b = Phaser(bus)
         b.init()
+        b.report()
         action = sys.argv[3]
         if action == "eeprom":
             b.eeprom_update()
-        with b.flash_upd():
-            b.report()
-            if action == "read":
-                b.dump(sys.argv[4])
-            elif action == "write":
-                with open(sys.argv[4], "rb") as fil:
-                    b.flash.flash(0, fil.read())
+        if False:
+            with b.flash_upd():
+                 # b.report()
+                if action == "read":
+                    b.dump(sys.argv[4])
+                elif action == "write":
+                    with open(sys.argv[4], "rb") as fil:
+                        b.flash.flash(0, fil.read())
         b.creload()
