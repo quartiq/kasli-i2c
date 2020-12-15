@@ -39,7 +39,7 @@ class I2C:
 
     def set_direction(self, direction):
         self._direction = direction
-        self.dev.set_bitmode(direction, Ftdi.BITMODE_BITBANG)
+        self.dev.set_bitmode(direction, Ftdi.BitMode.BITBANG)
 
     def write(self, data):
         self.dev.write_data(bytes([data]))
