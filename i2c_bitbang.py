@@ -18,6 +18,11 @@ class I2C:
     RESET = 1 << 5  # >=v2.0, <v2.0 has it on CDBUS4
     max_clock_stretch = 100
 
+    try:
+        BITMODE_BITBANG = Ftdi.BITMODE_BITBANG
+    except:
+        BITMODE_BITBANG = Ftdi.BitMode.BITBANG
+
     def __init__(self):
         self.dev = Ftdi()
         self._time = 0
@@ -39,7 +44,7 @@ class I2C:
 
     def set_direction(self, direction):
         self._direction = direction
-        self.dev.set_bitmode(direction, Ftdi.BitMode.BITBANG)
+        self.dev.set_bitmode(direction, self.BITMODE_BITBANG)
 
     def write(self, data):
         self.dev.write_data(bytes([data]))
