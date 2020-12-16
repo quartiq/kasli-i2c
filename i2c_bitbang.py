@@ -15,7 +15,8 @@ class I2C:
     SDAO = 1 << 1
     SDAI = 1 << 2
     EN = (1 << 4) | (1 << 6)  # 4 on <=v2.0, 6 on >v2.0
-    RESET = 1 << 5  # >=v2.0, <v2.0 has it on CDBUS4
+    RST = 1 << 5
+
     max_clock_stretch = 100
 
     try:
@@ -27,6 +28,19 @@ class I2C:
         self.dev = Ftdi()
         self._time = 0
         self._direction = 0
+        self.set_reset_pol(active_high=True)
+
+    def set_reset_pol(self, active_high=True):
+        """ Kasli v>=2.0 has an active HIGH I2C reset, earlier versions are
+        active LOW. """
+        if active_high:
+            self.ENABLE = self.EN
+            self.DISABLE = 0
+            self.RESET = self.RST | self.EN
+        else:
+            self.ENABLE = self.EN | self.RST
+            self.DISABLE = self.RST
+            self.RESET = self.EN
 
     def configure(self, url, **kwargs):
         self.dev.open_bitbang_from_url(url, **kwargs)
@@ -36,9 +50,9 @@ class I2C:
         self._time += 1
 
     def reset(self):
-        self.write(self.EN | self.RESET)
+        self.write(self.RESET)
         self.tick()
-        self.write(self.EN)
+        self.write(self.ENABLE)
         self.tick()
         time.sleep(.01)
 
@@ -78,15 +92,15 @@ class I2C:
         raise ValueError("SCL low exceeded clock stretch limit")
 
     def acquire(self):
-        # EN, !SCL, !SDA
-        self.write(self.EN)
-        # enable USB-I2C
-        self.set_direction(self.EN | self.RESET)
+        """ Enable enable USB-I2C """
+        self.write(self.ENABLE)
+
+        self.set_direction(self.EN | self.RST)
         self.tick()
         time.sleep(.1)
         i = self.read()
-        if not i & self.EN:
-            raise ValueError("EN low despite enable")
+        if i & (self.EN | self.RST) != self.ENABLE:
+            raise ValueError("EN/RST stuck despite enable")
         if not i & self.SCL:
             raise ValueError("SCL stuck low")
         if not i & self.SDAI:
@@ -96,12 +110,13 @@ class I2C:
         return self
 
     def release(self):
-        self.set_direction(self.EN | self.RESET)
-        self.write(0)
+        """ Disable USB-I2C """
+        self.set_direction(self.EN | self.RST)
+        self.write(self.DISABLE)
         self.tick()
         i = self.read()
-        if i & self.EN:
-            raise ValueError("EN high despite disable")
+        if i & (self.EN | self.RST) != self.DISABLE:
+            raise ValueError("EN/RST stuck despite disable")
         if not i & self.SCL:
             raise ValueError("SCL low despite disable")
         if not i & self.SDAI:

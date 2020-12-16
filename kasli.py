@@ -41,7 +41,13 @@ class Kasli(I2C, chips.ScanI2C):
 
     @contextmanager
     def enabled(self, *ports):
-        self.enable(*ports)
+        try:
+            self.enable(*ports)
+        except I2CNACK:  # Kasli < v2.0 has active LOW reset
+            self.set_reset_pol(False)
+            self.reset()
+            self.enable(*ports)
+
         try:
             yield self
         finally:
