@@ -1,5 +1,4 @@
 import logging
-import sys
 import json
 import datetime
 from collections import OrderedDict
@@ -7,9 +6,6 @@ import socket
 # OrderedDict = dict
 
 from sinara import Sinara
-from kasli import Kasli
-from chips import EEPROM, PCA9548
-from label import render_zpl
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +75,10 @@ def flash(description, ss, ft_serial=None):
     ss_new = []
     url = "ftdi://ftdi:4232h{}/2".format(
             ":" + ft_serial if ft_serial is not None else "")
+
+    from kasli import Kasli
+    from chips import EEPROM, PCA9548
+
     with Kasli().configure(url) as bus:
         # bus.reset_switch()
         bus.reset()
@@ -169,7 +169,9 @@ if __name__ == "__main__":
     assert description["vendor"] == __vendor__
 
     # build a list of Sinara eeprom contents from description
-    ss = [get_kasli(description)]
+    ss = []
+    if "target" in description:
+        ss.append(get_kasli(description))
     ss.extend(get_eem(p) for p in description["peripherals"])
 
     if args.update:
@@ -194,4 +196,8 @@ if __name__ == "__main__":
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((args.printer, 9100))
         sock.sendall("\n".join(labels).encode())
-    # open("labels/{}.png".format(s.eui48_fmt), "wb").write(render_zpl(z))
+    else:
+        from label import render_zpl
+        for s in ss:
+            open("labels/{}.png".format(s[0].eui48_fmt), "wb").write(
+                    render_zpl(get_sinara_label(s[0])))

@@ -1,5 +1,4 @@
 import requests
-import shutil
 
 
 def render_zpl(zpl, *, resolution=8, width=1.2, height=0.6, index=0,
