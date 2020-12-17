@@ -43,7 +43,7 @@ artiq_mkfs storage.img -s ip $IP
 artiq_flash -t kasli -I "ftdi_serial $FT_SERIAL" -V $VERSION --srcbuild -d $DIR -f storage.img gateware bootloader firmware storage start
 stty -F $UART_DEV 115200 cs8 -cstopb -parenb opost onlcr
 timeout --foreground 15 socat stdio $UART_DEV || true
-sudo arp -d $IP || true
+sudo ip neigh flush to $IP || true
 ping -w40 -W40 -c4 $IP
 echo SUCCESS
 
