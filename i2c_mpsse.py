@@ -45,7 +45,6 @@ class I2C(I2cController):
         cmd = array("B")
         cmd.extend((Ftdi.SET_BITS_LOW, self.IDLE, self._direction))
         self._ftdi.write_data(cmd)
-        return self
 
     def release(self):
         cmd = array("B")
@@ -55,7 +54,8 @@ class I2C(I2cController):
         self.terminate()
 
     def __enter__(self):
-        return self.acquire()
+        self.acquire()
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.release()

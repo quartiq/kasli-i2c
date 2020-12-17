@@ -20,7 +20,7 @@ class I2C:
     SDAO = 1 << 1
     SDAI = 1 << 2
     EN = (1 << 4) | (1 << 6)  # 4 on <=v2.0, 6 on >v2.0
-    RESET = 1 << 5  # >=v2.0, <v2.0 has it on CDBUS4
+    RESET = 1 << 5  # active high on >=v2.0, active low on <v2.0
     max_clock_stretch = 100
 
     def __init__(self):
@@ -93,7 +93,6 @@ class I2C:
             raise ValueError("SDAI stuck low")
         if not i & self.SDAO:
             raise ValueError("SDAO stuck low")
-        return self
 
     def release(self):
         self.set_direction(self.EN | self.RESET)
