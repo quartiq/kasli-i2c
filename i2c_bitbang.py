@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 I2CNACK = I2cNackError
 
+try:
+    BITMODE_BITBANG = Ftdi.BITMODE_BITBANG
+except:  # pyftdi >= 0.49.0
+    BITMODE_BITBANG = Ftdi.BitMode.BITBANG
+
 
 class I2C:
     SCL = 1 << 0
@@ -17,11 +22,6 @@ class I2C:
     EN = (1 << 4) | (1 << 6)  # 4 on <=v2.0, 6 on >v2.0
     RESET = 1 << 5  # >=v2.0, <v2.0 has it on CDBUS4
     max_clock_stretch = 100
-
-    try:
-        BITMODE_BITBANG = Ftdi.BITMODE_BITBANG
-    except:
-        BITMODE_BITBANG = Ftdi.BitMode.BITBANG
 
     def __init__(self):
         self.dev = Ftdi()
@@ -44,7 +44,7 @@ class I2C:
 
     def set_direction(self, direction):
         self._direction = direction
-        self.dev.set_bitmode(direction, self.BITMODE_BITBANG)
+        self.dev.set_bitmode(direction, BITMODE_BITBANG)
 
     def write(self, data):
         self.dev.write_data(bytes([data]))
