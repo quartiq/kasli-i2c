@@ -19,10 +19,10 @@ class Fastino:
         self.flash = chips.SPIFlash(self.spi, 0b0001)
 
     def init(self):
-        self.spi.gpio_write(0b1000)  # GPIO output values
+        self.spi.gpio_enable(0b1110)  # use as GPIO
         # ssel bidir (ignored), spi_en: push-pull, cdone: input, creset: bidir
         self.spi.gpio_config(0b00, 0b01, 0b10, 0b01)
-        self.spi.gpio_enable(0b1110)  # use as GPIO
+        self.spi.gpio_write(0b1000)  # GPIO output values
         i = self.spi.gpio_read()
         assert not i & 0b0010  # SPI disable
         assert i & 0b0001  # SS deassert
