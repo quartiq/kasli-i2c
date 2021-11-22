@@ -63,11 +63,11 @@ def get_sinara_label(s):
     # assert s.vendor_fmt == __vendor__
     return """
 ^XA
-^LH20,10^CFA
-^FO0,10^FB140,4^FD{s.name_fmt}\&{s.description}\&{s.eui48_fmt}^FS
-^FO0,55^FB140,3^FDQUARTIQ GmbH\&Rudower Chaussee 29\&12489 Berlin, Germany^FS
-^FO0,90^FB220,2^FD{s.url}\&{s.license} - {date}^FS
-^FO140,0^BQN,2,2^FDQA,https://qr.quartiq.de/sinara/{s.eui48_fmt}^FS
+^FXQUARTIQ Label^FS
+^LH10,10^CFP
+^FO10,10^FB125,5^FD{s.name_fmt}\&{s.eui48_asc}\&
+QUARTIQ GmbH Berlin, Germany^FS
+^FO135,0^BQN,2,3^FDMA,https://qr.quartiq.de/eui48/{s.eui48_asc}^FS
 ^XZ""".format(s=s, date=today)
 
 
