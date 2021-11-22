@@ -157,6 +157,10 @@ class Sinara(_SinaraTuple):
         return bytes([int(_, 16) for _ in eui48.split("-", 5)])
 
     @property
+    def eui48_asc(self):
+        return "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}".format(*self.eui48)
+
+    @property
     def hw_rev(self):
         return "v{:d}.{:d}".format(self.major, self.minor)
 
