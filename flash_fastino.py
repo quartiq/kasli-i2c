@@ -106,7 +106,7 @@ if __name__ == "__main__":
     url = "ftdi://ftdi:4232h:{}/2".format(serial)
     with Kasli().configure(url) as bus, bus.enabled(sys.argv[2]):
         b = Fastino(bus)
-        b.report()
+        # b.report()
         b.init()
         action = sys.argv[3]
         if action == "eeprom":
