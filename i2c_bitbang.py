@@ -20,7 +20,7 @@ class I2C:
     SDAO = 1 << 1
     SDAI = 1 << 2
     EN = (1 << 4) | (1 << 6)  # 4 on <=v2.0, 6 on >v2.0
-    RESET = 1 << 5  # active high on >=v2.0, active low on <v2.0
+    RESET_B = 1 << 5  # active high on >=v2.0, active low on <v2.0
     max_clock_stretch = 100
 
     def __init__(self):
@@ -36,9 +36,9 @@ class I2C:
         self._time += 1
 
     def reset(self):
-        self.write(self.EN | self.RESET)
-        self.tick()
         self.write(self.EN)
+        self.tick()
+        self.write(self.EN | self.RESET_B)
         self.tick()
         time.sleep(.01)
 
@@ -79,9 +79,9 @@ class I2C:
 
     def acquire(self):
         # EN, !SCL, !SDA
-        self.write(self.EN)
+        self.write(self.EN | self.RESET_B)
         # enable USB-I2C
-        self.set_direction(self.EN | self.RESET)
+        self.set_direction(self.EN | self.RESET_B)
         self.tick()
         time.sleep(.1)
         i = self.read()
@@ -95,8 +95,8 @@ class I2C:
             raise ValueError("SDAO stuck low")
 
     def release(self):
-        self.set_direction(self.EN | self.RESET)
-        self.write(0)
+        self.set_direction(self.EN | self.RESET_B)
+        self.write(self.RESET_B)
         self.tick()
         i = self.read()
         if i & self.EN:
