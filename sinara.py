@@ -59,7 +59,8 @@ class Sinara(_SinaraTuple):
         "Phaser",
         "Clocker",
         "Booster",
-        "Booster_Channel"
+        "Booster_Channel",
+        "DIO_MCX"
         # ...
     ]
     descriptions = {
@@ -80,7 +81,8 @@ class Sinara(_SinaraTuple):
         "Phaser": "2x RF DAC + LF ADC",
         "Clocker": "2x4 clock fan out",
         "Booster": "8x RF power amp",
-        "Booster_Channel": "RFPA module"
+        "Booster_Channel": "RFPA module",
+        "DIO_MCX": "16x iso MCX IO"
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
