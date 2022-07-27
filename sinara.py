@@ -36,6 +36,7 @@ class Sinara(_SinaraTuple):
     _crc = zlib.crc32
     _pad = b"\xff" * 122
 
+    # This board/description lists are sorted and new modules should always be appended at the end.
     boards = [
         "invalid",
         "VHDCI_Carrier",
