@@ -89,7 +89,7 @@ def flash(description, ss, ft_serial=None):
                     ee = EEPROM(bus)
                     if i == 0:
                         port = "LOC0"
-                        if si.hw_rev in ["v2.0",]:
+                        if si.hw_rev in ["v2.0",] or si.board_fmt in ["Kasli_soc"]:
                             ee = EEPROM(bus, addr=0x57)  # v2
                     else:
                         port = "EEM{:d}".format(
