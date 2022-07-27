@@ -83,7 +83,7 @@ class Sinara(_SinaraTuple):
         "Clocker": "2x4 clock fan out",
         "Booster": "8x RF power amp",
         "Booster_Channel": "RFPA module",
-        "DIO_MCX": "16x iso MCX IO",
+        "DIO_MCX": "16x MCX IO",
         "Kasli_soc": "12 EEM ZYNQ SoC"
     }
     variants = {
