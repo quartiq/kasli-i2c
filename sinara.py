@@ -36,6 +36,7 @@ class Sinara(_SinaraTuple):
     _crc = zlib.crc32
     _pad = b"\xff" * 122
 
+    # This board/description lists are sorted and new modules should always be appended at the end.
     boards = [
         "invalid",
         "VHDCI_Carrier",
@@ -60,7 +61,8 @@ class Sinara(_SinaraTuple):
         "Clocker",
         "Booster",
         "Booster_Channel",
-        "DIO_MCX"
+        "DIO_MCX",
+        "Kasli_soc"
         # ...
     ]
     descriptions = {
@@ -82,7 +84,8 @@ class Sinara(_SinaraTuple):
         "Clocker": "2x4 clock fan out",
         "Booster": "8x RF power amp",
         "Booster_Channel": "RFPA module",
-        "DIO_MCX": "16x MCX IO"
+        "DIO_MCX": "16x MCX IO",
+        "Kasli_soc": "12 EEM ZYNQ SoC"
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
