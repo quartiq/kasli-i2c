@@ -90,7 +90,7 @@ def flash(description, ss, ft_serial=None):
                     if i == 0:
                         port = "LOC0"
                         if si.hw_rev in ["v2.0",] or si.board_fmt in ["Kasli_soc"]:
-                            ee = EEPROM(bus, addr=0x57)  # v2
+                            ee = EEPROM(bus, addr=0x57)  # Kasli v2 and Kasli-SoC have this address
                     else:
                         port = "EEM{:d}".format(
                             description["peripherals"][i - 1]["ports"][j])
