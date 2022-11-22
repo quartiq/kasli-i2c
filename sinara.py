@@ -105,7 +105,7 @@ class Sinara(_SinaraTuple):
 
     def pack(self):
         name = self[0].encode()
-        assert self[0] == self.board_fmt
+        assert self[0].lower() == self.board_fmt.lower()
         eui48 = self[-1]
         data = self._struct.pack(
             0, self._magic, name, *self[1:-1], self._pad, eui48)
