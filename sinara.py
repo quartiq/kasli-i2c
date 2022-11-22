@@ -90,6 +90,7 @@ class Sinara(_SinaraTuple):
     variants = {
         "Urukul": ["AD9910", "AD9912"],
         "Phaser": ["Baseband", "Upconverter"],
+        "Mirny": ["Base", "Almazny"]
     }
 
     vendors = [
@@ -175,6 +176,22 @@ class Sinara(_SinaraTuple):
         return int(v[0]), int(v[1]), v[2:]
 
     @property
+    def almazny_hw_rev(self):
+        """Almazny HW revision is stored in last two bytes of board data."""
+        assert self.board == Sinara.boards.index("Mirny") and \
+               self.variant == Sinara.variants["Mirny"].index("Almazny")
+        return "v{:d}.{:d}".format(self.board_data[-2], self.board_data[-1])
+
+    @staticmethod
+    def board_data_almazny(major, minor, board_data=b"\xff"*62):
+        """Returns board data with embedded Almazny HW revision and given
+        board data. For Almazny board data length must be at most 62."""
+        assert len(board_data) <= 62
+        return board_data +\
+               b"\xff"*(62-len(board_data)) +\
+               bytes([major, minor])
+
+    @property
     def license(self):
         return self.licenses.get(self.board_fmt, self.licenses[None])
 
@@ -184,10 +201,13 @@ Sinara.__new__.__defaults__ = Sinara._defaults
 
 
 if __name__ == "__main__":
-    s = Sinara(name="DIO-BNC",
-               board=Sinara.boards.index("DIO-BNC"),
-               data_rev=0, major=1, minor=1, variant=0, port=0,
-               vendor=Sinara.vendors.index("Technosystem"))
+    s = Sinara(name="Mirny",
+               board=Sinara.boards.index("Mirny"),
+               data_rev=0, major=1, minor=1, 
+               variant=Sinara.variants["Mirny"].index("Almazny"), port=0,
+               vendor=Sinara.vendors.index("Technosystem"),
+               board_data=Sinara.board_data_almazny(1, 2))
     print(s)
     print(s.pack())
     assert Sinara.unpack(s.pack()) == s
+    assert Sinara.unpack(s.pack()).almazny_hw_rev == "v1.2"
