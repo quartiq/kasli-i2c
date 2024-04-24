@@ -63,6 +63,10 @@ class Sinara(_SinaraTuple):
         "Booster_Channel",
         "DIO_MCX",
         "Kasli_soc"
+        "Driver",
+        "Thermostat",
+        "Thermostat-EEM",
+        "Pounder",
         # ...
     ]
     descriptions = {
@@ -85,7 +89,11 @@ class Sinara(_SinaraTuple):
         "Booster": "8x RF power amp",
         "Booster_Channel": "RFPA module",
         "DIO_MCX": "16x MCX IO",
-        "Kasli_soc": "12 EEM ZYNQ SoC"
+        "Kasli_soc": "12 EEM ZYNQ SoC",
+        "Driver": "Current source",
+        "Thermostat": "2x NTC-TEC",
+        "Thermostat-EEM": "16x NTC, 4x TEC",
+        "Pounder": "2x DDS Transceiver",
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
