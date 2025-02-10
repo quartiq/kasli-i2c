@@ -67,6 +67,7 @@ class Sinara(_SinaraTuple):
         "Thermostat",
         "Thermostat-EEM",
         "Pounder",
+        "EEM_FMC_Carrier"
         # ...
     ]
     descriptions = {
@@ -94,6 +95,7 @@ class Sinara(_SinaraTuple):
         "Thermostat": "2x NTC-TEC",
         "Thermostat-EEM": "16x NTC, 4x TEC",
         "Pounder": "2x DDS Transceiver",
+        "EEM_FMC_Carrier": "A7 FMC carrier",
     }
     variants = {
         "Urukul": ["AD9910", "AD9912"],
